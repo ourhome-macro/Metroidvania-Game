@@ -1,0 +1,125 @@
+# =============================================
+# Unity .gitignore (增强版)
+# 基于: https://github.com/github/gitignore/blob/main/Unity.gitignore
+# =============================================
+
+# ========== Unity 核心 ==========
+.utmp/
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+*.log
+/[Cc]ollaborate/
+/[Uu]nity[Cc]ache/
+
+# ========== Blender ==========
+*.blend1
+*.blend1.meta
+
+# ========== 敏感 / 大文件 ==========
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# ========== IDE & 编辑器 ==========
+# JetBrains Rider
+/[Aa]ssets/Plugins/Editor/JetBrains*
+*.DotSettings.user
+.idea/
+
+# Visual Studio
+.vs/
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# VS Code
+.vscode/settings.json
+.vscode/launch.json
+
+# ========== Mono ==========
+mono_crash.*
+
+# ========== Unity 生成文件 ==========
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+
+# ========== 构建产物 ==========
+*.apk
+*.aab
+*.unitypackage
+*.unitypackage.meta
+*.app
+crashlytics-build.properties
+
+# ========== Test Runner ==========
+InitTestScene*.unity*
+
+# ========== Addressables ==========
+/ServerData
+/[Aa]ssets/StreamingAssets/aa*
+/[Aa]ssets/AddressableAssetsData/link.xml*
+/[Aa]ssets/Addressables_Temp*
+/[Aa]ssets/AddressableAssetsData/*/*.bin*
+
+# ========== Visual Scripting ==========
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Flow/UnitOptions.db.meta
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers
+/[Aa]ssets/Unity.VisualScripting.Generated/VisualScripting.Core/Property Providers.meta
+
+# ========== Gradle ==========
+.gradle/
+
+# ========== UWP / IL2CPP ==========
+/[Uu]WP/
+/UnityIL2CPP*
+/UnityLinker*
+
+# ========== macOS ==========
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# ========== Windows ==========
+Thumbs.db
+Thumbs.db?
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ========== 本地 / 环境配置 ==========
+*.local
+*.env
+*.env.local
+
+# ========== 压缩包（可选） ==========
+*.zip
+*.rar
+*.7z
+
+# ========== 符号链接 ==========
+*.lnk
+*.asset
+*.unity
