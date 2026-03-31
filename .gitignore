@@ -121,5 +121,3 @@ $RECYCLE.BIN/
 
 # ========== 符号链接 ==========
 *.lnk
-*.asset
-*.unity
