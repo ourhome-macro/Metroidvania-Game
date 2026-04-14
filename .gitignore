@@ -121,3 +121,7 @@ $RECYCLE.BIN/
 
 # ========== 符号链接 ==========
 *.lnk
+*.ase
+*.meta
+*.png
+*.gif
