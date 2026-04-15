@@ -328,7 +328,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 371025316}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f819f105cb7ca004d85519c8c6c8eaea, type: 3}
+  m_Script: {fileID: 11500000, guid: 99f5de22d8257c9428fae4f63bb20478, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   playerConfig: {fileID: 11400000, guid: 70fc4735b92dd0b478adb6db2c54a02b, type: 2}
@@ -346,7 +346,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 371025316}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 11120c36371b4884c9f8d3547a00e245, type: 3}
+  m_Script: {fileID: 11500000, guid: 4926abb77ee8eb2438f90335d9f4803a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   hitboxPrefab: {fileID: 1151449129634445177, guid: c2cb3abe636747243a36383506e5a56c, type: 3}
@@ -409,7 +409,7 @@ Animator:
   m_GameObject: {fileID: 371025316}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: 44f74ba7a36758f41be5732cd28dc175, type: 2}
+  m_Controller: {fileID: 9100000, guid: 8ea30af2151bc324490fc2bb66422665, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0

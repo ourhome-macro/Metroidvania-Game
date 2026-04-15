@@ -460,12 +460,13 @@ GameObject:
   - component: {fileID: 1313893040}
   - component: {fileID: 1313893039}
   - component: {fileID: 1313893038}
-  - component: {fileID: 1313893037}
-  - component: {fileID: 1313893036}
   - component: {fileID: 1313893035}
   - component: {fileID: 1313893034}
   - component: {fileID: 1313893033}
   - component: {fileID: 1313893032}
+  - component: {fileID: 1313893044}
+  - component: {fileID: 1313893043}
+  - component: {fileID: 1313893042}
   m_Layer: 6
   m_Name: player
   m_TagString: Player
@@ -483,7 +484,7 @@ Animator:
   m_GameObject: {fileID: 1313893031}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 9100000, guid: 44f74ba7a36758f41be5732cd28dc175, type: 2}
+  m_Controller: {fileID: 9100000, guid: 8ea30af2151bc324490fc2bb66422665, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -539,41 +540,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _maxHp: 100
   _currentHp: 100
---- !u!114 &1313893036
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1313893031}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 11120c36371b4884c9f8d3547a00e245, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  hitboxPrefab: {fileID: 1151449129634445177, guid: c2cb3abe636747243a36383506e5a56c, type: 3}
-  attackPoint: {fileID: 2033217592}
-  attackDuration: 0.1
-  knockbackForce: 10
-  invincibleDuration: 1.5
---- !u!114 &1313893037
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1313893031}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f819f105cb7ca004d85519c8c6c8eaea, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  playerConfig: {fileID: 11400000, guid: 70fc4735b92dd0b478adb6db2c54a02b, type: 2}
-  groundCheck: {fileID: 240764004}
-  groundCheckRadius: 0.12
-  groundLayer:
-    serializedVersion: 2
-    m_Bits: 8
 --- !u!61 &1313893038
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -715,6 +681,75 @@ Transform:
   - {fileID: 2033217592}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1313893042
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1313893031}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d42ff2e5fed2f1c419daff1085b89cb1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  defaultConfig: {fileID: 0}
+  maxHealth: 0
+  currentHealth: 0
+  attackPower: 10
+--- !u!114 &1313893043
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1313893031}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4926abb77ee8eb2438f90335d9f4803a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  attackPoint: {fileID: 0}
+  attackRadius: 0.6
+  enemyLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  attackDamage: 20
+  attackCooldown: 0.35
+  attackLockDuration: 0.35
+  maxHealth: 100
+  hitStunDuration: 0.2
+  postHitInvincibleTime: 0.15
+  defendDamageMultiplier: 0.3
+  perfectParryWindow: 0.4
+  defendMoveMultiplier: 0.35
+  skipInvincibleTime: 0.6
+  skipDuration: 0.18
+  skipSpeed: 12
+  skipCooldown: 1
+  playerController: {fileID: 0}
+--- !u!114 &1313893044
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1313893031}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 99f5de22d8257c9428fae4f63bb20478, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  moveSpeed: 6
+  acceleration: 50
+  deceleration: 60
+  jumpForce: 14
+  groundCheck: {fileID: 240764004}
+  groundCheckRadius: 0.12
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 8
+  playerCombat: {fileID: 0}
 --- !u!1 &1738522984
 GameObject:
   m_ObjectHideFlags: 3

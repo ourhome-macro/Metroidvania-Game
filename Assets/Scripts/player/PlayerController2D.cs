@@ -19,6 +19,7 @@ public class PlayerController2D : MonoBehaviour
 
     private Rigidbody2D rb;
     private Animator animator;
+    private Collider2D bodyCollider;
 
     private float moveInput;
     private bool jumpPressed;
@@ -32,6 +33,7 @@ public class PlayerController2D : MonoBehaviour
     {
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
+        bodyCollider = GetComponent<Collider2D>();
 
         if (playerCombat == null)
         {
@@ -106,12 +108,22 @@ public class PlayerController2D : MonoBehaviour
 
     private bool IsOnGround()
     {
-        if (groundCheck == null)
+        LayerMask effectiveGroundLayer = groundLayer.value == 0 ? LayerMask.GetMask("Ground") : groundLayer;
+
+        if (groundCheck != null)
+        {
+            return Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, effectiveGroundLayer) != null;
+        }
+
+        if (bodyCollider == null)
         {
             return false;
         }
 
-        return Physics2D.OverlapCircle(groundCheck.position, groundCheckRadius, groundLayer) != null;
+        Bounds b = bodyCollider.bounds;
+        Vector2 checkPos = new Vector2(b.center.x, b.min.y - 0.03f);
+        Vector2 checkSize = new Vector2(Mathf.Max(0.05f, b.size.x * 0.7f), 0.08f);
+        return Physics2D.OverlapBox(checkPos, checkSize, 0f, effectiveGroundLayer) != null;
     }
 
     private void UpdateAnimator()
