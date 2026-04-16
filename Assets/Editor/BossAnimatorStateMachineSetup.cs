@@ -88,8 +88,8 @@ public static class BossAnimatorStateMachineSetup
 
         sm.defaultState = walkState;
 
-        AddAnyStateTriggerTransition(sm, attackState, "Attack");
-        AddAnyStateTriggerTransition(sm, slamState, "GroundSlam");
+        AddTriggerTransition(walkState, attackState, "Attack", 0.03f);
+        AddTriggerTransition(walkState, slamState, "GroundSlam", 0.03f);
         AddAnyStateTriggerTransition(sm, deathState, "Die");
         AddBoolTransition(walkState, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(attackState, deathState, "isDead", true, false, 0.02f);
@@ -287,6 +287,7 @@ public static class BossAnimatorStateMachineSetup
         controller.AddParameter("isDead", AnimatorControllerParameterType.Bool);
         controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("GroundSlam", AnimatorControllerParameterType.Trigger);
+        controller.AddParameter("isHit", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("Die", AnimatorControllerParameterType.Trigger);
     }
 
@@ -328,6 +329,18 @@ public static class BossAnimatorStateMachineSetup
         t.hasExitTime = false;
         t.hasFixedDuration = true;
         t.duration = 0.03f;
+        t.exitTime = 0f;
+        t.interruptionSource = TransitionInterruptionSource.None;
+        t.canTransitionToSelf = false;
+        t.AddCondition(AnimatorConditionMode.If, 0f, triggerName);
+    }
+
+    private static void AddTriggerTransition(AnimatorState from, AnimatorState to, string triggerName, float duration)
+    {
+        AnimatorStateTransition t = from.AddTransition(to);
+        t.hasExitTime = false;
+        t.hasFixedDuration = true;
+        t.duration = duration;
         t.exitTime = 0f;
         t.interruptionSource = TransitionInterruptionSource.None;
         t.canTransitionToSelf = false;

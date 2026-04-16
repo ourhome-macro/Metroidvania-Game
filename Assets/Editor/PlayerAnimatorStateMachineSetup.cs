@@ -51,9 +51,9 @@ public static class PlayerAnimatorStateMachineSetup
         AnimationClip run = GetClip(clips, "running") ?? idle;
         AnimationClip jump = GetClip(clips, "jump") ?? idle;
         AnimationClip defend = GetClip(clips, "defend") ?? idle;
-        AnimationClip attack = GetClip(clips, "atk") ?? idle;
+        AnimationClip attack = GetAttackClip(clips) ?? idle;
         AnimationClip skip = GetClip(clips, "skip") ?? idle;
-        AnimationClip hit = GetClip(clips, "be_atked") ?? idle;
+        AnimationClip hit = GetHitClip(clips) ?? idle;
 
         if (idle == null)
         {
@@ -146,6 +146,59 @@ public static class PlayerAnimatorStateMachineSetup
             if (kv.Key.IndexOf(contains, StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return kv.Value;
+            }
+        }
+
+        return null;
+    }
+
+    private static AnimationClip GetAttackClip(Dictionary<string, AnimationClip> clips)
+    {
+        string[] preferred =
+        {
+            "attack",
+            "attack-",
+            "attack_",
+            "attack (",
+            "atk"
+        };
+
+        foreach (string p in preferred)
+        {
+            foreach (KeyValuePair<string, AnimationClip> kv in clips)
+            {
+                string lower = kv.Key.ToLowerInvariant();
+                if (lower.Contains("be_atk") || lower.Contains("hit") || lower.Contains("hurt"))
+                {
+                    continue;
+                }
+
+                if (lower.Contains(p))
+                {
+                    return kv.Value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static AnimationClip GetHitClip(Dictionary<string, AnimationClip> clips)
+    {
+        string[] preferred =
+        {
+            "be_atked",
+            "be_atk",
+            "hit",
+            "hurt"
+        };
+
+        foreach (string p in preferred)
+        {
+            AnimationClip clip = GetClip(clips, p);
+            if (clip != null)
+            {
+                return clip;
             }
         }
 

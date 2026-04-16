@@ -20,7 +20,7 @@ public class PlayerCombat : MonoBehaviour
 
 	[Header("Defend / Parry")]
 	[SerializeField] private float defendDamageMultiplier = 0.3f; // 减伤70%
-	[SerializeField] private float perfectParryWindow = 0.4f;
+	[SerializeField] private float perfectParryWindow = 0.65f;
 	[SerializeField] private float defendMoveMultiplier = 0.35f;
 
 	[Header("Skip (Dodge)")]
@@ -31,6 +31,9 @@ public class PlayerCombat : MonoBehaviour
 
 	[Header("Refs")]
 	[SerializeField] private PlayerController2D playerController;
+
+	[Header("Debug")]
+	[SerializeField] private bool logDefenseResult = true;
 
 	private Animator animator;
 	private Rigidbody2D rb;
@@ -147,6 +150,7 @@ public class PlayerCombat : MonoBehaviour
 	{
 		lastSkipTime = Time.time;
 		isSkipping = true;
+		GameEvents.DashStart();
 		SetDefending(false);
 		invincibleUntil = Time.time + skipInvincibleTime;
 
@@ -167,6 +171,16 @@ public class PlayerCombat : MonoBehaviour
 		}
 
 		isSkipping = false;
+		GameEvents.DashEnd();
+	}
+
+	private void OnDisable()
+	{
+		if (isSkipping)
+		{
+			isSkipping = false;
+			GameEvents.DashEnd();
+		}
 	}
 
 	/// <summary>
@@ -230,6 +244,10 @@ public class PlayerCombat : MonoBehaviour
 			}
 
 			int reduced = Mathf.RoundToInt(incomingDamage * defendDamageMultiplier);
+			if (logDefenseResult)
+			{
+				Debug.Log($"[PlayerCombat] 防御：完美格挡失效，但抵挡了伤害。原伤害={incomingDamage}，减免后={reduced}。", this);
+			}
 			ApplyDamage(reduced, false);
 			return;
 		}
@@ -248,18 +266,33 @@ public class PlayerCombat : MonoBehaviour
 
 	private bool IsPerfectParry(float enemyAttackStartTime)
 	{
-		if (enemyAttackStartTime < 0f)
+		if (!isDefending || defendStartTime < 0f)
 		{
 			return false;
 		}
 
-		float delta = Time.time - enemyAttackStartTime;
-		return delta >= 0f && delta <= perfectParryWindow;
+		float defendHeldTime = Time.time - defendStartTime;
+		if (defendHeldTime < 0f || defendHeldTime > perfectParryWindow)
+		{
+			return false;
+		}
+
+		if (enemyAttackStartTime < 0f)
+		{
+			return true;
+		}
+
+		return Time.time >= enemyAttackStartTime;
 	}
 
 	private void PerfectParry(AttackData attackData)
 	{
 		// 本次无伤，并将伤害返还给攻击者。
+		GameEvents.PerfectParry();
+		if (logDefenseResult)
+		{
+			Debug.Log($"[PlayerCombat] 防御：完美格挡成功。反弹伤害={attackData.Damage}。", this);
+		}
 		if (attackData.Attacker != null)
 		{
 			attackData.Attacker.OnParried(attackData.Damage, transform.position);

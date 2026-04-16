@@ -27,6 +27,36 @@ public static class GameEvents
         OnBossDeath?.Invoke();
     }
 
+    public static event Action OnDashStart;
+    public static void DashStart()
+    {
+        OnDashStart?.Invoke();
+    }
+
+    public static event Action OnDashEnd;
+    public static void DashEnd()
+    {
+        OnDashEnd?.Invoke();
+    }
+
+    public static event Action<Transform> OnBossUltStart;
+    public static void BossUltStart(Transform bossRoot)
+    {
+        OnBossUltStart?.Invoke(bossRoot);
+    }
+
+    public static event Action OnBossUltEnd;
+    public static void BossUltEnd()
+    {
+        OnBossUltEnd?.Invoke();
+    }
+
+    public static event Action OnPerfectParry;
+    public static void PerfectParry()
+    {
+        OnPerfectParry?.Invoke();
+    }
+
     public static event Action OnEliteKilled;
     public static void EliteKilled()
     {
