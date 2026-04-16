@@ -55,6 +55,7 @@ public static class BossAnimatorStateMachineSetup
         Dictionary<string, AnimationClip> clips = LoadClips();
         AnimationClip walk = GetClip(clips, "boss_walk") ?? GetClip(clips, "walk") ?? GetAnyClip(clips);
         AnimationClip attack = GetClip(clips, "boss_attack") ?? GetClip(clips, "attack") ?? walk;
+        AnimationClip attack2 = GetClip(clips, "boss_attack2") ?? attack;
         AnimationClip slam = GetClip(clips, "ground_slam") ?? GetClip(clips, "slam") ?? walk;
         AnimationClip death = GetClip(clips, "boss_death") ?? GetClip(clips, "death") ?? walk;
 
@@ -66,6 +67,7 @@ public static class BossAnimatorStateMachineSetup
 
         EnsureClipLoop(walk, true);
         EnsureClipLoop(attack, false);
+        EnsureClipLoop(attack2, false);
         EnsureClipLoop(slam, false);
         EnsureClipLoop(death, false);
         EnsureWalkUsesRunSegment(walk, 8, 16);
@@ -78,24 +80,29 @@ public static class BossAnimatorStateMachineSetup
 
         AnimatorState walkState = sm.AddState("Walk", new Vector3(300, 190, 0));
         AnimatorState attackState = sm.AddState("Attack", new Vector3(580, 80, 0));
-        AnimatorState slamState = sm.AddState("GroundSlam", new Vector3(580, 190, 0));
-        AnimatorState deathState = sm.AddState("Death", new Vector3(580, 300, 0));
+        AnimatorState attack2State = sm.AddState("Attack2", new Vector3(580, 155, 0));
+        AnimatorState slamState = sm.AddState("GroundSlam", new Vector3(580, 245, 0));
+        AnimatorState deathState = sm.AddState("Death", new Vector3(580, 335, 0));
 
         walkState.motion = walk;
         attackState.motion = attack;
+        attack2State.motion = attack2;
         slamState.motion = slam;
         deathState.motion = death;
 
         sm.defaultState = walkState;
 
         AddTriggerTransition(walkState, attackState, "Attack", 0.03f);
+        AddTriggerTransition(walkState, attack2State, "Attack2", 0.03f);
         AddTriggerTransition(walkState, slamState, "GroundSlam", 0.03f);
         AddAnyStateTriggerTransition(sm, deathState, "Die");
         AddBoolTransition(walkState, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(attackState, deathState, "isDead", true, false, 0.02f);
+        AddBoolTransition(attack2State, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(slamState, deathState, "isDead", true, false, 0.02f);
 
         AddExitToLocomotion(attackState, walkState, 0.95f);
+        AddExitToLocomotion(attack2State, walkState, 0.95f);
         AddExitToLocomotion(slamState, walkState, 0.95f);
 
         BindControllerToBossObjects(controller);
@@ -286,6 +293,7 @@ public static class BossAnimatorStateMachineSetup
     {
         controller.AddParameter("isDead", AnimatorControllerParameterType.Bool);
         controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
+        controller.AddParameter("Attack2", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("GroundSlam", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("isHit", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("Die", AnimatorControllerParameterType.Trigger);

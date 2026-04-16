@@ -3,6 +3,13 @@ using UnityEngine;
 
 public class EnemyCombat : MonoBehaviour
 {
+    private enum AttackMode
+    {
+        Attack,
+        Attack2,
+        GroundSlam
+    }
+
     [Header("Health")]
     [SerializeField] private int maxHealth = 60;
 
@@ -43,7 +50,18 @@ public class EnemyCombat : MonoBehaviour
 
     [Header("Animator Params")]
     [SerializeField] private string attackTriggerName = "Attack";
+    [SerializeField] private string attack2TriggerName = "Attack2";
+    [SerializeField] private string groundSlamTriggerName = "GroundSlam";
     [SerializeField] private string hitTriggerName = "isHit";
+
+    [Header("Boss Skill Routing")]
+    [SerializeField] private float attack2MinDistance = 1.8f;
+    [SerializeField] private float groundSlamMinDistance = 3.2f;
+    [SerializeField] private float groundSlamCooldown = 2.8f;
+
+    [Header("Ground Slam Jump")]
+    [SerializeField] private float groundSlamJumpDuration = 0.4f;
+    [SerializeField] private float groundSlamJumpHeight = 1.6f;
 
     [Header("AI")]
     [SerializeField] private bool useInternalAi = true;
@@ -61,8 +79,12 @@ public class EnemyCombat : MonoBehaviour
     private bool isAttacking;
     private bool animatorParamsCached;
     private bool hasAttackTriggerParam;
+    private bool hasAttack2TriggerParam;
+    private bool hasGroundSlamTriggerParam;
     private bool hasHitTriggerParam;
     private bool loggedMissingAttackTrigger;
+    private bool loggedMissingAttack2Trigger;
+    private bool loggedMissingGroundSlamTrigger;
     private bool loggedMissingHitTrigger;
     private Coroutine attackRoutine;
     private int attackToken;
@@ -73,6 +95,8 @@ public class EnemyCombat : MonoBehaviour
     private bool cachedHitPointLocalOffsets;
     private int facingDirection = 1;
     private bool attackPointVisible;
+    private Rigidbody2D rb;
+    private float nextGroundSlamAllowedTime = -999f;
 
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
@@ -86,6 +110,8 @@ public class EnemyCombat : MonoBehaviour
 
     private void Awake()
     {
+        rb = GetComponent<Rigidbody2D>();
+
         if (animator == null)
         {
             animator = FindBestAnimator();
@@ -192,20 +218,35 @@ public class EnemyCombat : MonoBehaviour
             return false;
         }
 
-        attackRoutine = StartCoroutine(AttackRoutine(++attackToken));
+        AttackMode mode = ChooseAttackMode();
+        attackRoutine = StartCoroutine(AttackRoutine(++attackToken, mode));
         return true;
     }
 
-    private IEnumerator AttackRoutine(int token)
+    private IEnumerator AttackRoutine(int token, AttackMode mode)
     {
         isAttacking = true;
         currentAttackStartTime = Time.time;
         nextAttackAllowedTime = float.MaxValue;
         SetAttackPointVisible(false);
 
-        if (!string.IsNullOrEmpty(attackTriggerName))
+        string triggerName = GetTriggerName(mode);
+        bool triggerExists = GetTriggerExists(mode);
+
+        if (!string.IsNullOrEmpty(triggerName))
         {
-            TrySetTrigger(attackTriggerName, ref loggedMissingAttackTrigger, hasAttackTriggerParam);
+            switch (mode)
+            {
+                case AttackMode.Attack2:
+                    TrySetTrigger(triggerName, ref loggedMissingAttack2Trigger, triggerExists);
+                    break;
+                case AttackMode.GroundSlam:
+                    TrySetTrigger(triggerName, ref loggedMissingGroundSlamTrigger, triggerExists);
+                    break;
+                default:
+                    TrySetTrigger(triggerName, ref loggedMissingAttackTrigger, triggerExists);
+                    break;
+            }
         }
 
         float preHitRaise = Mathf.Min(Mathf.Max(0f, raisePoseTime), Mathf.Max(0f, attackWindup));
@@ -228,7 +269,18 @@ public class EnemyCombat : MonoBehaviour
         float baseHitDelay = Mathf.Max(0f, attackHitFrame) / Mathf.Max(1f, attackClipFps);
         float configuredWindup = Mathf.Max(0f, attackWindup);
         float remainWindup = Mathf.Max(configuredWindup, baseHitDelay) - preHitRaise;
-        if (remainWindup > 0f)
+
+        if (mode == AttackMode.GroundSlam)
+        {
+            if (remainWindup > 0f)
+            {
+                yield return new WaitForSeconds(Mathf.Min(remainWindup, 0.1f));
+            }
+
+            yield return PerformGroundSlamJump();
+            nextGroundSlamAllowedTime = Time.time + Mathf.Max(0.25f, groundSlamCooldown);
+        }
+        else if (remainWindup > 0f)
         {
             yield return new WaitForSeconds(remainWindup);
         }
@@ -267,6 +319,77 @@ public class EnemyCombat : MonoBehaviour
                 SetAttackPointVisible(false);
             }
         }
+    }
+
+    private AttackMode ChooseAttackMode()
+    {
+        float distance = playerTarget != null
+            ? Vector2.Distance(transform.position, playerTarget.position)
+            : 0f;
+
+        if (hasGroundSlamTriggerParam && distance >= Mathf.Max(0f, groundSlamMinDistance) && Time.time >= nextGroundSlamAllowedTime)
+        {
+            return AttackMode.GroundSlam;
+        }
+
+        if (hasAttack2TriggerParam && distance >= Mathf.Max(0f, attack2MinDistance))
+        {
+            return AttackMode.Attack2;
+        }
+
+        return AttackMode.Attack;
+    }
+
+    private string GetTriggerName(AttackMode mode)
+    {
+        switch (mode)
+        {
+            case AttackMode.Attack2:
+                return attack2TriggerName;
+            case AttackMode.GroundSlam:
+                return groundSlamTriggerName;
+            default:
+                return attackTriggerName;
+        }
+    }
+
+    private bool GetTriggerExists(AttackMode mode)
+    {
+        switch (mode)
+        {
+            case AttackMode.Attack2:
+                return hasAttack2TriggerParam;
+            case AttackMode.GroundSlam:
+                return hasGroundSlamTriggerParam;
+            default:
+                return hasAttackTriggerParam;
+        }
+    }
+
+    private IEnumerator PerformGroundSlamJump()
+    {
+        if (rb == null || playerTarget == null)
+        {
+            yield break;
+        }
+
+        float duration = Mathf.Max(0.08f, groundSlamJumpDuration);
+        float height = Mathf.Max(0f, groundSlamJumpHeight);
+        Vector2 start = rb.position;
+        Vector2 target = new Vector2(playerTarget.position.x, playerTarget.position.y);
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            float t = Mathf.Clamp01(elapsed / duration);
+            float x = Mathf.Lerp(start.x, target.x, t);
+            float y = Mathf.Lerp(start.y, target.y, t) + 4f * height * t * (1f - t);
+            rb.MovePosition(new Vector2(x, y));
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        rb.MovePosition(target);
     }
 
     /// <summary>
@@ -352,6 +475,8 @@ public class EnemyCombat : MonoBehaviour
     {
         animatorParamsCached = true;
         hasAttackTriggerParam = false;
+        hasAttack2TriggerParam = false;
+        hasGroundSlamTriggerParam = false;
         hasHitTriggerParam = false;
 
         if (animator == null)
@@ -370,6 +495,16 @@ public class EnemyCombat : MonoBehaviour
             if (parameters[i].name == attackTriggerName)
             {
                 hasAttackTriggerParam = true;
+            }
+
+            if (parameters[i].name == attack2TriggerName)
+            {
+                hasAttack2TriggerParam = true;
+            }
+
+            if (parameters[i].name == groundSlamTriggerName)
+            {
+                hasGroundSlamTriggerParam = true;
             }
 
             if (parameters[i].name == hitTriggerName)

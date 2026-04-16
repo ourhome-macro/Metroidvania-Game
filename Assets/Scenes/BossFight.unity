@@ -1332,7 +1332,14 @@ MonoBehaviour:
   contactPoint: {fileID: 982247964}
   requirePhysicalTouchForContactDamage: 1
   attackTriggerName: Attack
+  attack2TriggerName: Attack2
+  groundSlamTriggerName: GroundSlam
   hitTriggerName: isHit
+  attack2MinDistance: 1.8
+  groundSlamMinDistance: 3.2
+  groundSlamCooldown: 2.8
+  groundSlamJumpDuration: 0.4
+  groundSlamJumpHeight: 1.6
   useInternalAi: 0
   playerTarget: {fileID: 0}
   engageRange: 2
@@ -1620,6 +1627,7 @@ MonoBehaviour:
   skipSpeed: 12
   skipCooldown: 1
   playerController: {fileID: 0}
+  logDefenseResult: 1
 --- !u!114 &1313893044
 MonoBehaviour:
   m_ObjectHideFlags: 0
