@@ -95,6 +95,11 @@ public class EnemyAIController2D : MonoBehaviour
             pendingFacingDirection = facingDirection;
         }
 
+        if (enemyCombat != null)
+        {
+            enemyCombat.SetFacingDirection(facingDirection);
+        }
+
         CacheAnimatorParams();
     }
 
@@ -110,6 +115,7 @@ public class EnemyAIController2D : MonoBehaviour
         EnsurePlayerTarget();
         TickTurnTimer();
         UpdateState();
+        PushCombatStateFlags();
         TickState();
         UpdateAnimator();
     }
@@ -176,6 +182,16 @@ public class EnemyAIController2D : MonoBehaviour
                 TickAttack();
                 break;
         }
+    }
+
+    private void PushCombatStateFlags()
+    {
+        if (enemyCombat == null)
+        {
+            return;
+        }
+
+        enemyCombat.SetContactDamageActive(currentState == EnemyState.Chase);
     }
 
     private void TickIdlePatrol()
@@ -341,6 +357,11 @@ public class EnemyAIController2D : MonoBehaviour
     private void ApplyFacing(int sign)
     {
         facingDirection = sign >= 0 ? 1 : -1;
+
+        if (enemyCombat != null)
+        {
+            enemyCombat.SetFacingDirection(facingDirection);
+        }
 
         if (visualRoot == null)
         {

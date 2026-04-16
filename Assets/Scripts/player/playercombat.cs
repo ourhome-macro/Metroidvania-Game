@@ -6,7 +6,8 @@ public class PlayerCombat : MonoBehaviour
 {
 	[Header("Attack")]
 	[SerializeField] private Transform attackPoint;
-	[SerializeField] private float attackRadius = 0.6f;
+	[SerializeField] private float attackRadius = 0.72f;
+	[SerializeField] private float minimumEffectiveAttackRadius = 0.72f;
 	[SerializeField] private LayerMask enemyLayer;
 	[SerializeField] private int attackDamage = 20;
 	[SerializeField] private float attackCooldown = 0.35f;
@@ -45,6 +46,8 @@ public class PlayerCombat : MonoBehaviour
 	private bool isDefending;
 	private bool isSkipping;
 	private bool isHitStunned;
+
+	private float EffectiveAttackRadius => Mathf.Max(attackRadius, minimumEffectiveAttackRadius);
 
 	public int CurrentHealth => currentHealth;
 	public int MaxHealth => maxHealth;
@@ -177,7 +180,8 @@ public class PlayerCombat : MonoBehaviour
 			return;
 		}
 
-		Collider2D[] hitResults = Physics2D.OverlapCircleAll(attackPoint.position, attackRadius, enemyLayer);
+		int mask = enemyLayer.value == 0 ? Physics2D.AllLayers : enemyLayer.value;
+		Collider2D[] hitResults = Physics2D.OverlapCircleAll(attackPoint.position, EffectiveAttackRadius, mask);
 		for (int i = 0; i < hitResults.Length; i++)
 		{
 			EnemyCombat enemy = hitResults[i].GetComponentInParent<EnemyCombat>();
@@ -335,6 +339,6 @@ public class PlayerCombat : MonoBehaviour
 		}
 
 		Gizmos.color = Color.red;
-		Gizmos.DrawWireSphere(attackPoint.position, attackRadius);
+		Gizmos.DrawWireSphere(attackPoint.position, EffectiveAttackRadius);
 	}
 }

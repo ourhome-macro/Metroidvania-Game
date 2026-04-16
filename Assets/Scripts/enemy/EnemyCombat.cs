@@ -8,11 +8,38 @@ public class EnemyCombat : MonoBehaviour
 
     [Header("Attack")]
     [SerializeField] private int attackDamage = 15;
-    [SerializeField] private float attackCooldown = 1.2f;
-    [SerializeField] private float attackWindup = 0.2f;
+    [SerializeField] private float attackCooldown = 1.6f;
+    [SerializeField] private float attackWindup = 0.35f;
+    [SerializeField] private float attackRecovery = 0.3f;
+    [SerializeField] private float minimumEffectiveAttackCooldown = 2.2f;
+    [SerializeField] private float minimumEffectiveRecovery = 0.45f;
+    [SerializeField] private float minimumEffectiveAttackRange = 1.15f;
     [SerializeField] private Transform attackPoint;
     [SerializeField] private float attackRange = 0.8f;
     [SerializeField] private LayerMask playerLayer;
+
+    [Header("Fast/Slow Slash")]
+    [SerializeField, Range(0f, 1f)] private float slowSlashChance = 0.35f;
+    [SerializeField] private float raisePoseTime = 0.33f;
+    [SerializeField] private Vector2 slowSlashPauseRange = new Vector2(0.18f, 0.32f);
+
+    [Header("Attack Hit Timing")]
+    [SerializeField] private float attackClipFps = 12f;
+    [SerializeField] private int attackHitFrame = 5;
+    [SerializeField] private float hitboxActiveDuration = 0.08f;
+    [SerializeField] private bool hideAttackPointOutsideAttack = true;
+
+    [Header("Facing")]
+    [SerializeField] private bool mirrorHitPointsWithFacing = true;
+
+    [Header("Contact Damage")]
+    [SerializeField] private bool enableContactDamage = true;
+    [SerializeField] private int contactDamage = 6;
+    [SerializeField] private float contactDamageCooldown = 0.8f;
+    [SerializeField] private float contactDamageRange = 0.45f;
+    [SerializeField] private float maximumEffectiveContactDamageRange = 0.75f;
+    [SerializeField] private Transform contactPoint;
+    [SerializeField] private bool requirePhysicalTouchForContactDamage = true;
 
     [Header("Animator Params")]
     [SerializeField] private string attackTriggerName = "Attack";
@@ -25,9 +52,10 @@ public class EnemyCombat : MonoBehaviour
 
     [Header("Refs")]
     [SerializeField] private Animator animator;
+    [SerializeField] private Collider2D bodyCollider;
 
     private int currentHealth;
-    private float lastAttackTime = -999f;
+    private float nextAttackAllowedTime = -999f;
     private float currentAttackStartTime = -999f;
     private bool isDead;
     private bool isAttacking;
@@ -36,11 +64,25 @@ public class EnemyCombat : MonoBehaviour
     private bool hasHitTriggerParam;
     private bool loggedMissingAttackTrigger;
     private bool loggedMissingHitTrigger;
+    private Coroutine attackRoutine;
+    private int attackToken;
+    private bool contactDamageActiveByAi = true;
+    private float nextContactDamageAllowedTime = -999f;
+    private Vector3 attackPointBaseLocalPosition;
+    private Vector3 contactPointBaseLocalPosition;
+    private bool cachedHitPointLocalOffsets;
+    private int facingDirection = 1;
+    private bool attackPointVisible;
 
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
     public bool IsDead => isDead;
     public bool IsAttacking => isAttacking;
+
+    private float EffectiveAttackCooldown => Mathf.Max(attackCooldown, minimumEffectiveAttackCooldown);
+    private float EffectiveAttackRecovery => Mathf.Max(attackRecovery, minimumEffectiveRecovery);
+    private float EffectiveAttackRange => Mathf.Max(attackRange, minimumEffectiveAttackRange);
+    private float EffectiveContactDamageRange => Mathf.Min(Mathf.Max(0.05f, contactDamageRange), Mathf.Max(0.05f, maximumEffectiveContactDamageRange));
 
     private void Awake()
     {
@@ -58,6 +100,19 @@ public class EnemyCombat : MonoBehaviour
         }
 
         CacheAnimatorParams();
+        CacheHitPointOffsets();
+
+        if (bodyCollider == null)
+        {
+            bodyCollider = GetComponent<Collider2D>();
+        }
+
+        SetFacingDirection(facingDirection);
+        if (attackPoint != null)
+        {
+            attackPointVisible = attackPoint.gameObject.activeSelf;
+        }
+        SetAttackPointVisible(!hideAttackPointOutsideAttack);
 
         currentHealth = Mathf.Max(1, maxHealth);
 
@@ -73,6 +128,8 @@ public class EnemyCombat : MonoBehaviour
 
     private void Update()
     {
+        TickContactDamage();
+
         if (!useInternalAi)
         {
             return;
@@ -83,7 +140,7 @@ public class EnemyCombat : MonoBehaviour
             return;
         }
 
-        if (Time.time - lastAttackTime < attackCooldown)
+        if (Time.time < nextAttackAllowedTime)
         {
             return;
         }
@@ -100,6 +157,29 @@ public class EnemyCombat : MonoBehaviour
         useInternalAi = enabled;
     }
 
+    public void SetContactDamageActive(bool active)
+    {
+        contactDamageActiveByAi = active;
+
+        if (active == false && hideAttackPointOutsideAttack && !isAttacking)
+        {
+            SetAttackPointVisible(false);
+        }
+    }
+
+    public void SetFacingDirection(int direction)
+    {
+        facingDirection = direction >= 0 ? 1 : -1;
+
+        if (!mirrorHitPointsWithFacing)
+        {
+            return;
+        }
+
+        CacheHitPointOffsets();
+        ApplyHitPointMirror();
+    }
+
     public bool TryStartAttack()
     {
         if (isDead || isAttacking)
@@ -107,30 +187,86 @@ public class EnemyCombat : MonoBehaviour
             return false;
         }
 
-        if (Time.time - lastAttackTime < attackCooldown)
+        if (Time.time < nextAttackAllowedTime)
         {
             return false;
         }
 
-        StartCoroutine(AttackRoutine());
+        attackRoutine = StartCoroutine(AttackRoutine(++attackToken));
         return true;
     }
 
-    private IEnumerator AttackRoutine()
+    private IEnumerator AttackRoutine(int token)
     {
         isAttacking = true;
-        lastAttackTime = Time.time;
         currentAttackStartTime = Time.time;
+        nextAttackAllowedTime = float.MaxValue;
+        SetAttackPointVisible(false);
 
         if (!string.IsNullOrEmpty(attackTriggerName))
         {
             TrySetTrigger(attackTriggerName, ref loggedMissingAttackTrigger, hasAttackTriggerParam);
         }
 
-        yield return new WaitForSeconds(attackWindup);
-        DealDamageToPlayer();
+        float preHitRaise = Mathf.Min(Mathf.Max(0f, raisePoseTime), Mathf.Max(0f, attackWindup));
+        if (preHitRaise > 0f)
+        {
+            yield return new WaitForSeconds(preHitRaise);
+        }
 
-        isAttacking = false;
+        if (slowSlashChance > 0f && Random.value <= slowSlashChance)
+        {
+            float minPause = Mathf.Min(slowSlashPauseRange.x, slowSlashPauseRange.y);
+            float maxPause = Mathf.Max(slowSlashPauseRange.x, slowSlashPauseRange.y);
+            float randomPause = Random.Range(Mathf.Max(0f, minPause), Mathf.Max(0f, maxPause));
+            if (randomPause > 0f)
+            {
+                yield return new WaitForSeconds(randomPause);
+            }
+        }
+
+        float baseHitDelay = Mathf.Max(0f, attackHitFrame) / Mathf.Max(1f, attackClipFps);
+        float configuredWindup = Mathf.Max(0f, attackWindup);
+        float remainWindup = Mathf.Max(configuredWindup, baseHitDelay) - preHitRaise;
+        if (remainWindup > 0f)
+        {
+            yield return new WaitForSeconds(remainWindup);
+        }
+
+        if (token == attackToken && !isDead)
+        {
+            SetAttackPointVisible(true);
+            DealDamageToPlayer();
+
+            float activeTime = Mathf.Max(0f, hitboxActiveDuration);
+            if (activeTime > 0f)
+            {
+                yield return new WaitForSeconds(activeTime);
+            }
+
+            if (hideAttackPointOutsideAttack)
+            {
+                SetAttackPointVisible(false);
+            }
+        }
+
+        float recovery = EffectiveAttackRecovery;
+        if (recovery > 0f)
+        {
+            yield return new WaitForSeconds(recovery);
+        }
+
+        if (token == attackToken)
+        {
+            attackRoutine = null;
+            isAttacking = false;
+            nextAttackAllowedTime = Time.time + Mathf.Max(0f, EffectiveAttackCooldown);
+
+            if (hideAttackPointOutsideAttack)
+            {
+                SetAttackPointVisible(false);
+            }
+        }
     }
 
     /// <summary>
@@ -145,7 +281,7 @@ public class EnemyCombat : MonoBehaviour
         }
 
         int mask = playerLayer.value == 0 ? Physics2D.AllLayers : playerLayer.value;
-        Collider2D[] cols = Physics2D.OverlapCircleAll(attackPoint.position, attackRange, mask);
+        Collider2D[] cols = Physics2D.OverlapCircleAll(attackPoint.position, EffectiveAttackRange, mask);
         for (int i = 0; i < cols.Length; i++)
         {
             PlayerCombat player = cols[i].GetComponentInParent<PlayerCombat>();
@@ -198,8 +334,10 @@ public class EnemyCombat : MonoBehaviour
             return;
         }
 
+        InterruptAttack();
         isAttacking = false;
         TakeDamage(reflectedDamage, null);
+        nextAttackAllowedTime = Time.time + Mathf.Max(0.35f, EffectiveAttackCooldown * 0.6f);
     }
 
     public void PlayHit()
@@ -292,8 +430,159 @@ public class EnemyCombat : MonoBehaviour
 
     private void Die()
     {
+        InterruptAttack();
         isDead = true;
         Destroy(gameObject);
+    }
+
+    private void InterruptAttack()
+    {
+        attackToken++;
+
+        if (attackRoutine != null)
+        {
+            StopCoroutine(attackRoutine);
+            attackRoutine = null;
+        }
+
+        isAttacking = false;
+
+        if (hideAttackPointOutsideAttack)
+        {
+            SetAttackPointVisible(false);
+        }
+    }
+
+    private void TickContactDamage()
+    {
+        if (!enableContactDamage || isDead || isAttacking || !contactDamageActiveByAi)
+        {
+            return;
+        }
+
+        if (Time.time < nextContactDamageAllowedTime)
+        {
+            return;
+        }
+
+        Vector2 point = contactPoint != null ? contactPoint.position : transform.position;
+        int mask = playerLayer.value == 0 ? Physics2D.AllLayers : playerLayer.value;
+        Collider2D[] cols = Physics2D.OverlapCircleAll(point, EffectiveContactDamageRange, mask);
+        for (int i = 0; i < cols.Length; i++)
+        {
+            PlayerCombat player = cols[i].GetComponentInParent<PlayerCombat>();
+            if (player == null)
+            {
+                continue;
+            }
+
+            if (requirePhysicalTouchForContactDamage && !IsTouchingPlayer(player))
+            {
+                continue;
+            }
+
+            AttackData data = new AttackData(
+                Mathf.Max(0, contactDamage),
+                this,
+                Time.time - 99f,
+                point
+            );
+
+            player.ReceiveAttack(data);
+            nextContactDamageAllowedTime = Time.time + Mathf.Max(0.1f, contactDamageCooldown);
+            return;
+        }
+    }
+
+    private bool IsTouchingPlayer(PlayerCombat player)
+    {
+        if (player == null || bodyCollider == null)
+        {
+            return false;
+        }
+
+        Collider2D[] playerColliders = player.GetComponentsInChildren<Collider2D>(true);
+        for (int i = 0; i < playerColliders.Length; i++)
+        {
+            Collider2D col = playerColliders[i];
+            if (col != null && bodyCollider.IsTouching(col))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void AnimEvent_EnableAttackPoint()
+    {
+        SetAttackPointVisible(true);
+    }
+
+    public void AnimEvent_DisableAttackPoint()
+    {
+        if (hideAttackPointOutsideAttack)
+        {
+            SetAttackPointVisible(false);
+        }
+    }
+
+    public void AnimEvent_DealDamageToPlayer()
+    {
+        DealDamageToPlayer();
+    }
+
+    private void CacheHitPointOffsets()
+    {
+        if (cachedHitPointLocalOffsets)
+        {
+            return;
+        }
+
+        if (attackPoint != null)
+        {
+            attackPointBaseLocalPosition = attackPoint.localPosition;
+        }
+
+        if (contactPoint != null)
+        {
+            contactPointBaseLocalPosition = contactPoint.localPosition;
+        }
+
+        cachedHitPointLocalOffsets = true;
+    }
+
+    private void ApplyHitPointMirror()
+    {
+        if (attackPoint != null)
+        {
+            Vector3 p = attackPointBaseLocalPosition;
+            p.x = Mathf.Abs(p.x) * facingDirection;
+            attackPoint.localPosition = p;
+        }
+
+        if (contactPoint != null)
+        {
+            Vector3 p = contactPointBaseLocalPosition;
+            p.x = Mathf.Abs(p.x) * facingDirection;
+            contactPoint.localPosition = p;
+        }
+    }
+
+    private void SetAttackPointVisible(bool visible)
+    {
+        if (attackPoint == null)
+        {
+            return;
+        }
+
+        if (attackPointVisible == visible)
+        {
+            return;
+        }
+
+        attackPointVisible = visible;
+        attackPoint.gameObject.SetActive(visible);
     }
 
     private void OnDrawGizmosSelected()
@@ -304,7 +593,18 @@ public class EnemyCombat : MonoBehaviour
         }
 
         Gizmos.color = Color.magenta;
-        Gizmos.DrawWireSphere(attackPoint.position, attackRange);
+        Gizmos.DrawWireSphere(attackPoint.position, EffectiveAttackRange);
+
+        if (contactPoint != null)
+        {
+            Gizmos.color = new Color(1f, 0.55f, 0f, 1f);
+            Gizmos.DrawWireSphere(contactPoint.position, EffectiveContactDamageRange);
+        }
+        else
+        {
+            Gizmos.color = new Color(1f, 0.55f, 0f, 1f);
+            Gizmos.DrawWireSphere(transform.position, EffectiveContactDamageRange);
+        }
 
         if (playerTarget != null)
         {

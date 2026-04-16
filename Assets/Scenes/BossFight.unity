@@ -150,7 +150,7 @@ Transform:
   m_GameObject: {fileID: 78683410}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: -0.044, z: -0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -681,6 +681,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ac0b09e7857660247b1477e93731de29, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!1 &982247963
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 982247964}
+  m_Layer: 0
+  m_Name: AttackPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &982247964
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 982247963}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.8, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1263729074}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1263729072
 GameObject:
   m_ObjectHideFlags: 0
@@ -692,6 +723,10 @@ GameObject:
   - component: {fileID: 1263729074}
   - component: {fileID: 1263729073}
   - component: {fileID: 1263729075}
+  - component: {fileID: 1263729076}
+  - component: {fileID: 1263729079}
+  - component: {fileID: 1263729078}
+  - component: {fileID: 1263729077}
   m_Layer: 0
   m_Name: Boss
   m_TagString: Boss
@@ -767,6 +802,7 @@ Transform:
   - {fileID: 2069453953}
   - {fileID: 350613817}
   - {fileID: 78683411}
+  - {fileID: 982247964}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: -2.639, y: 0, z: 0}
 --- !u!95 &1263729075
@@ -790,6 +826,126 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!114 &1263729076
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1263729072}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d674e712d2d10334cb944eb54363a937, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pixelsPerUnit: 128
+  snapX: 1
+  snapY: 1
+  snapZ: 0
+--- !u!114 &1263729077
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1263729072}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8762f8552dd9f814a9bb7437baa09a26, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  config: {fileID: 0}
+  playerTarget: {fileID: 1313893041}
+  enemyCombat: {fileID: 1263729079}
+  animator: {fileID: 1263729075}
+  visualRoot: {fileID: 0}
+  autoFindPlayerByTag: 1
+  discoveryRangeOverride: -1
+  meleeRangeOverride: -1
+  meleeRangeBuffer: 0.35
+  attackVerticalTolerance: 2.5
+  loseTargetRangeMultiplier: 1.25
+  enablePatrol: 1
+  patrolDistance: 2
+  patrolIdleDuration: 0.8
+  patrolSpeedMultiplier: 0.5
+  arriveThreshold: 0.1
+  turnLockDuration: 0.22
+  runningBoolName: isRunning
+--- !u!50 &1263729078
+Rigidbody2D:
+  serializedVersion: 4
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1263729072}
+  m_BodyType: 0
+  m_Simulated: 1
+  m_UseFullKinematicContacts: 0
+  m_UseAutoMass: 0
+  m_Mass: 1
+  m_LinearDrag: 0
+  m_AngularDrag: 0.05
+  m_GravityScale: 0
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_Interpolate: 0
+  m_SleepingMode: 1
+  m_CollisionDetection: 0
+  m_Constraints: 4
+--- !u!114 &1263729079
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1263729072}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2de13d366d177584786974274810b3f3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxHealth: 60
+  attackDamage: 15
+  attackCooldown: 1.2
+  attackWindup: 0.2
+  attackRecovery: 0.3
+  minimumEffectiveAttackCooldown: 2.2
+  minimumEffectiveRecovery: 0.45
+  minimumEffectiveAttackRange: 1.15
+  attackPoint: {fileID: 982247964}
+  attackRange: 0.8
+  playerLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  slowSlashChance: 0.35
+  raisePoseTime: 0.33
+  slowSlashPauseRange: {x: 0.18, y: 0.32}
+  attackClipFps: 12
+  attackHitFrame: 5
+  hitboxActiveDuration: 0.08
+  hideAttackPointOutsideAttack: 1
+  mirrorHitPointsWithFacing: 1
+  enableContactDamage: 1
+  contactDamage: 6
+  contactDamageCooldown: 0.8
+  contactDamageRange: 0.95
+  maximumEffectiveContactDamageRange: 0.75
+  contactPoint: {fileID: 982247964}
+  requirePhysicalTouchForContactDamage: 1
+  attackTriggerName: Attack
+  hitTriggerName: isHit
+  useInternalAi: 0
+  playerTarget: {fileID: 0}
+  engageRange: 2
+  animator: {fileID: 1263729075}
+  bodyCollider: {fileID: 0}
 --- !u!1 &1313893031
 GameObject:
   m_ObjectHideFlags: 0
@@ -1053,6 +1209,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   attackPoint: {fileID: 0}
   attackRadius: 0.6
+  minimumEffectiveAttackRadius: 0.72
   enemyLayer:
     serializedVersion: 2
     m_Bits: 0

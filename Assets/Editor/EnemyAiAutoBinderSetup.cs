@@ -156,6 +156,7 @@ public static class EnemyAiAutoBinderSetup
         changed |= SetBoolField(so, "useInternalAi", false);
         changed |= SetObjectFieldIfNull(so, "animator", animator);
         changed |= SetObjectFieldIfNull(so, "attackPoint", attackPoint);
+        changed |= SetObjectFieldIfNull(so, "contactPoint", attackPoint);
         changed |= SetLayerMaskIfZero(so, "playerLayer", LayerMask.GetMask("Player"));
 
         if (changed)

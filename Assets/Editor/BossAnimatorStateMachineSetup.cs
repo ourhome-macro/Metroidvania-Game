@@ -64,6 +64,12 @@ public static class BossAnimatorStateMachineSetup
             return;
         }
 
+        EnsureClipLoop(walk, true);
+        EnsureClipLoop(attack, false);
+        EnsureClipLoop(slam, false);
+        EnsureClipLoop(death, false);
+        EnsureWalkUsesRunSegment(walk, 8, 16);
+
         ClearParameters(controller);
         AddParameters(controller);
 
@@ -336,5 +342,113 @@ public static class BossAnimatorStateMachineSetup
         t.hasFixedDuration = true;
         t.duration = 0.03f;
         t.interruptionSource = TransitionInterruptionSource.None;
+    }
+
+    private static void EnsureClipLoop(AnimationClip clip, bool loop)
+    {
+        if (clip == null)
+        {
+            return;
+        }
+
+        SerializedObject so = new SerializedObject(clip);
+        SerializedProperty settings = so.FindProperty("m_AnimationClipSettings");
+        if (settings == null)
+        {
+            return;
+        }
+
+        SerializedProperty loopTimeProp = settings.FindPropertyRelative("m_LoopTime");
+        if (loopTimeProp == null || loopTimeProp.boolValue == loop)
+        {
+            return;
+        }
+
+        loopTimeProp.boolValue = loop;
+        so.ApplyModifiedProperties();
+        EditorUtility.SetDirty(clip);
+    }
+
+    private static void EnsureWalkUsesRunSegment(AnimationClip walkClip, int startFrame, int endFrame)
+    {
+        if (walkClip == null)
+        {
+            return;
+        }
+
+        EditorCurveBinding[] bindings = AnimationUtility.GetObjectReferenceCurveBindings(walkClip);
+        for (int i = 0; i < bindings.Length; i++)
+        {
+            EditorCurveBinding binding = bindings[i];
+            if (binding.type != typeof(SpriteRenderer) || binding.propertyName != "m_Sprite")
+            {
+                continue;
+            }
+
+            ObjectReferenceKeyframe[] frames = AnimationUtility.GetObjectReferenceCurve(walkClip, binding);
+            if (frames == null || frames.Length <= endFrame)
+            {
+                continue;
+            }
+
+            int length = endFrame - startFrame + 1;
+            if (length <= 1)
+            {
+                return;
+            }
+
+            bool alreadyTrimmed = frames.Length == length;
+            if (alreadyTrimmed)
+            {
+                bool sequenceMatch = true;
+                for (int f = 0; f < length; f++)
+                {
+                    float expectedTime = f / walkClip.frameRate;
+                    if (Mathf.Abs(frames[f].time - expectedTime) > 0.0001f)
+                    {
+                        sequenceMatch = false;
+                        break;
+                    }
+                }
+
+                if (sequenceMatch)
+                {
+                    return;
+                }
+            }
+
+            ObjectReferenceKeyframe[] trimmed = new ObjectReferenceKeyframe[length];
+            for (int f = 0; f < length; f++)
+            {
+                trimmed[f] = new ObjectReferenceKeyframe
+                {
+                    time = f / walkClip.frameRate,
+                    value = frames[startFrame + f].value
+                };
+            }
+
+            AnimationUtility.SetObjectReferenceCurve(walkClip, binding, trimmed);
+
+            SerializedObject so = new SerializedObject(walkClip);
+            SerializedProperty settings = so.FindProperty("m_AnimationClipSettings");
+            if (settings != null)
+            {
+                SerializedProperty startTimeProp = settings.FindPropertyRelative("m_StartTime");
+                SerializedProperty stopTimeProp = settings.FindPropertyRelative("m_StopTime");
+                if (startTimeProp != null)
+                {
+                    startTimeProp.floatValue = 0f;
+                }
+
+                if (stopTimeProp != null)
+                {
+                    stopTimeProp.floatValue = (length - 1) / walkClip.frameRate;
+                }
+            }
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(walkClip);
+            return;
+        }
     }
 }
