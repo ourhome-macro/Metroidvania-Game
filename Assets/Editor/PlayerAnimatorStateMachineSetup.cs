@@ -49,7 +49,7 @@ public static class PlayerAnimatorStateMachineSetup
         Dictionary<string, AnimationClip> clips = LoadClips();
         AnimationClip idle = GetClip(clips, "waepon idle") ?? GetAnyClip(clips);
         AnimationClip run = GetClip(clips, "running") ?? idle;
-        AnimationClip jump = idle;
+        AnimationClip jump = GetClip(clips, "jump") ?? idle;
         AnimationClip defend = GetClip(clips, "defend") ?? idle;
         AnimationClip attack = GetClip(clips, "atk") ?? idle;
         AnimationClip skip = GetClip(clips, "skip") ?? idle;

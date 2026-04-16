@@ -5,12 +5,13 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 
-public static class BatchCreateAnimAssets
+public static class BossBatchCreateAnimAssets
 {
-    private const string TargetFolder = "Assets/Player/prefabs-player";
+    private const string TargetFolder = "Assets/Boss";
+    private const string ControllerPath = "Assets/Boss/Boss.controller";
     private const float DefaultFps = 12f;
 
-    [MenuItem("Tools/Animation/Generate Clips And Controllers")]
+    [MenuItem("Tools/Animation/Generate Boss Clips And Controller")]
     public static void Generate()
     {
         if (!AssetDatabase.IsValidFolder(TargetFolder))
@@ -42,7 +43,6 @@ public static class BatchCreateAnimAssets
             string dir = Path.GetDirectoryName(texturePath)?.Replace('\\', '/') ?? TargetFolder;
             string baseName = Path.GetFileNameWithoutExtension(texturePath);
             string clipPath = $"{dir}/{baseName}.anim";
-            string controllerPath = $"{dir}/{baseName}.controller";
 
             AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
             if (clip == null)
@@ -57,23 +57,25 @@ public static class BatchCreateAnimAssets
                 EditorUtility.SetDirty(clip);
             }
 
-            AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
-            if (controller == null)
-            {
-                controller = AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
-                AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
-                AnimatorState state = stateMachine.AddState("Default");
-                state.motion = clip;
-                stateMachine.defaultState = state;
-            }
-
             processed++;
         }
 
+        EnsureBossController();
+
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        PlayerAnimatorStateMachineSetup.SetupStateMachine();
-        Debug.Log($"Animation generation finished. Processed: {processed}, Skipped: {skipped}");
+
+        BossAnimatorStateMachineSetup.SetupStateMachine();
+        Debug.Log($"Boss animation generation finished. Processed: {processed}, Skipped: {skipped}");
+    }
+
+    private static void EnsureBossController()
+    {
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        if (controller == null)
+        {
+            AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
+        }
     }
 
     private static void RebuildClip(AnimationClip clip, List<Sprite> sprites)
@@ -182,8 +184,8 @@ public static class BatchCreateAnimAssets
             {
                 name = $"Frame_{i}",
                 rect = new Rect(i * frameSize, 0, frameSize, frameSize),
-                pivot = new Vector2(0.5f, 0.5f),
-                alignment = (int)SpriteAlignment.Center
+                pivot = new Vector2(0.5f, 0f),
+                alignment = (int)SpriteAlignment.BottomCenter
             };
         }
 
@@ -222,6 +224,17 @@ public static class BatchCreateAnimAssets
         if (importer.spriteImportMode != SpriteImportMode.Single)
         {
             importer.spriteImportMode = SpriteImportMode.Single;
+            changed = true;
+        }
+
+        TextureImporterSettings settings = new TextureImporterSettings();
+        importer.ReadTextureSettings(settings);
+
+        if (settings.spriteAlignment != (int)SpriteAlignment.BottomCenter)
+        {
+            settings.spriteAlignment = (int)SpriteAlignment.BottomCenter;
+            settings.spritePivot = new Vector2(0.5f, 0f);
+            importer.SetTextureSettings(settings);
             changed = true;
         }
 

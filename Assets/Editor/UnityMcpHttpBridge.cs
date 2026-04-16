@@ -205,6 +205,21 @@ public static class UnityMcpHttpBridge
             return;
         }
 
+        if (path == "/setup-boss-animator" && context.Request.HttpMethod == "POST")
+        {
+            string json = ExecuteOnMainThread(() =>
+            {
+                BossBatchCreateAnimAssets.Generate();
+                return Json(new OkResponse
+                {
+                    ok = true,
+                    message = "Boss animator configured"
+                });
+            });
+            WriteJson(context.Response, 200, json);
+            return;
+        }
+
         if (path == "/set-field" && context.Request.HttpMethod == "POST")
         {
             SetFieldRequest payload = ReadBody<SetFieldRequest>(context.Request);

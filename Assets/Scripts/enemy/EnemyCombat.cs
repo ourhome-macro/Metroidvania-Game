@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 
-[RequireComponent(typeof(Animator))]
 public class EnemyCombat : MonoBehaviour
 {
     [Header("Health")]
@@ -20,22 +19,46 @@ public class EnemyCombat : MonoBehaviour
     [SerializeField] private string hitTriggerName = "isHit";
 
     [Header("AI")]
+    [SerializeField] private bool useInternalAi = true;
     [SerializeField] private Transform playerTarget;
     [SerializeField] private float engageRange = 2f;
 
-    private Animator animator;
+    [Header("Refs")]
+    [SerializeField] private Animator animator;
+
     private int currentHealth;
     private float lastAttackTime = -999f;
     private float currentAttackStartTime = -999f;
     private bool isDead;
     private bool isAttacking;
+    private bool animatorParamsCached;
+    private bool hasAttackTriggerParam;
+    private bool hasHitTriggerParam;
+    private bool loggedMissingAttackTrigger;
+    private bool loggedMissingHitTrigger;
 
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
+    public bool IsDead => isDead;
+    public bool IsAttacking => isAttacking;
 
     private void Awake()
     {
-        animator = GetComponent<Animator>();
+        if (animator == null)
+        {
+            animator = FindBestAnimator();
+        }
+        else
+        {
+            Animator preferred = FindBestAnimator();
+            if (preferred != null)
+            {
+                animator = preferred;
+            }
+        }
+
+        CacheAnimatorParams();
+
         currentHealth = Mathf.Max(1, maxHealth);
 
         if (playerTarget == null)
@@ -50,6 +73,11 @@ public class EnemyCombat : MonoBehaviour
 
     private void Update()
     {
+        if (!useInternalAi)
+        {
+            return;
+        }
+
         if (isDead || isAttacking || playerTarget == null)
         {
             return;
@@ -63,8 +91,29 @@ public class EnemyCombat : MonoBehaviour
         float distance = Vector2.Distance(transform.position, playerTarget.position);
         if (distance <= engageRange)
         {
-            StartCoroutine(AttackRoutine());
+            TryStartAttack();
         }
+    }
+
+    public void SetInternalAiEnabled(bool enabled)
+    {
+        useInternalAi = enabled;
+    }
+
+    public bool TryStartAttack()
+    {
+        if (isDead || isAttacking)
+        {
+            return false;
+        }
+
+        if (Time.time - lastAttackTime < attackCooldown)
+        {
+            return false;
+        }
+
+        StartCoroutine(AttackRoutine());
+        return true;
     }
 
     private IEnumerator AttackRoutine()
@@ -75,7 +124,7 @@ public class EnemyCombat : MonoBehaviour
 
         if (!string.IsNullOrEmpty(attackTriggerName))
         {
-            animator.SetTrigger(attackTriggerName);
+            TrySetTrigger(attackTriggerName, ref loggedMissingAttackTrigger, hasAttackTriggerParam);
         }
 
         yield return new WaitForSeconds(attackWindup);
@@ -95,7 +144,8 @@ public class EnemyCombat : MonoBehaviour
             return;
         }
 
-        Collider2D[] cols = Physics2D.OverlapCircleAll(attackPoint.position, attackRange, playerLayer);
+        int mask = playerLayer.value == 0 ? Physics2D.AllLayers : playerLayer.value;
+        Collider2D[] cols = Physics2D.OverlapCircleAll(attackPoint.position, attackRange, mask);
         for (int i = 0; i < cols.Length; i++)
         {
             PlayerCombat player = cols[i].GetComponentInParent<PlayerCombat>();
@@ -156,8 +206,88 @@ public class EnemyCombat : MonoBehaviour
     {
         if (!string.IsNullOrEmpty(hitTriggerName))
         {
-            animator.SetTrigger(hitTriggerName);
+            TrySetTrigger(hitTriggerName, ref loggedMissingHitTrigger, hasHitTriggerParam);
         }
+    }
+
+    private void CacheAnimatorParams()
+    {
+        animatorParamsCached = true;
+        hasAttackTriggerParam = false;
+        hasHitTriggerParam = false;
+
+        if (animator == null)
+        {
+            return;
+        }
+
+        AnimatorControllerParameter[] parameters = animator.parameters;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (parameters[i].type != AnimatorControllerParameterType.Trigger)
+            {
+                continue;
+            }
+
+            if (parameters[i].name == attackTriggerName)
+            {
+                hasAttackTriggerParam = true;
+            }
+
+            if (parameters[i].name == hitTriggerName)
+            {
+                hasHitTriggerParam = true;
+            }
+        }
+    }
+
+    private void TrySetTrigger(string triggerName, ref bool loggedMissing, bool cachedExists)
+    {
+        if (animator == null || string.IsNullOrEmpty(triggerName))
+        {
+            return;
+        }
+
+        if (!animatorParamsCached)
+        {
+            CacheAnimatorParams();
+        }
+
+        if (!cachedExists)
+        {
+            if (!loggedMissing)
+            {
+                loggedMissing = true;
+                Debug.LogWarning($"[EnemyCombat] Animator parameter '{triggerName}' not found on {name}.", this);
+            }
+            return;
+        }
+
+        animator.SetTrigger(triggerName);
+    }
+
+    private Animator FindBestAnimator()
+    {
+        Transform bossVisual = transform.Find("BossVisual");
+        if (bossVisual != null)
+        {
+            Animator visualAnimator = bossVisual.GetComponent<Animator>();
+            if (visualAnimator != null)
+            {
+                return visualAnimator;
+            }
+        }
+
+        Animator[] animators = GetComponentsInChildren<Animator>(true);
+        for (int i = 0; i < animators.Length; i++)
+        {
+            if (animators[i] != null && animators[i].gameObject != gameObject)
+            {
+                return animators[i];
+            }
+        }
+
+        return GetComponent<Animator>();
     }
 
     private void Die()
