@@ -7,10 +7,16 @@ using UnityEngine.SceneManagement;
 public static class EnemyAiAutoBinderSetup
 {
     private const string SessionKey = "EnemyAiAutoBinderSetup.Done";
+    private static readonly bool EnableAutoBindOnEditorLoad = false;
 
     [InitializeOnLoadMethod]
     private static void AutoBindOncePerSession()
     {
+        if (!EnableAutoBindOnEditorLoad)
+        {
+            return;
+        }
+
         if (SessionState.GetBool(SessionKey, false))
         {
             return;
@@ -41,6 +47,7 @@ public static class EnemyAiAutoBinderSetup
         int addedCombat = 0;
         int addedAi = 0;
         int addedRb = 0;
+        int addedCollider = 0;
         int createdAttackPoint = 0;
         int updatedAi = 0;
         int updatedCombat = 0;
@@ -102,7 +109,13 @@ public static class EnemyAiAutoBinderSetup
                         sceneChanged = true;
                     }
 
+                    if (EnsureBodyCollider(go, ref sceneChanged))
+                    {
+                        addedCollider++;
+                    }
+
                     Animator animator = FindBestAnimator(go);
+                    Collider2D bodyCollider = FindBestCollider(go);
 
                     Transform attackPoint = EnsureAttackPoint(go, combat, ref sceneChanged, ref createdAttackPoint);
 
@@ -112,7 +125,7 @@ public static class EnemyAiAutoBinderSetup
                         sceneChanged = true;
                     }
 
-                    if (BindCombatSerializedFields(combat, animator, attackPoint))
+                    if (BindCombatSerializedFields(combat, animator, attackPoint, bodyCollider))
                     {
                         updatedCombat++;
                         sceneChanged = true;
@@ -126,7 +139,7 @@ public static class EnemyAiAutoBinderSetup
             }
         }
 
-        Debug.Log($"[EnemyAIAutoBinder] Done. Matched targets: {matched}, Added EnemyCombat: {addedCombat}, Added EnemyAIController2D: {addedAi}, Added/Configured Rigidbody2D: {addedRb}, Created AttackPoint: {createdAttackPoint}, Updated AI refs: {updatedAi}, Updated combat refs: {updatedCombat}");
+        Debug.Log($"[EnemyAIAutoBinder] Done. Matched targets: {matched}, Added EnemyCombat: {addedCombat}, Added EnemyAIController2D: {addedAi}, Added/Configured Rigidbody2D: {addedRb}, Added BodyCollider: {addedCollider}, Created AttackPoint: {createdAttackPoint}, Updated AI refs: {updatedAi}, Updated combat refs: {updatedCombat}");
     }
 
     private static bool BindAiSerializedFields(EnemyAIController2D ai, EnemyConfigSO config, Transform player, EnemyCombat combat, Animator animator)
@@ -148,7 +161,7 @@ public static class EnemyAiAutoBinderSetup
         return changed;
     }
 
-    private static bool BindCombatSerializedFields(EnemyCombat combat, Animator animator, Transform attackPoint)
+    private static bool BindCombatSerializedFields(EnemyCombat combat, Animator animator, Transform attackPoint, Collider2D bodyCollider)
     {
         SerializedObject so = new SerializedObject(combat);
         bool changed = false;
@@ -156,8 +169,13 @@ public static class EnemyAiAutoBinderSetup
         changed |= SetBoolField(so, "useInternalAi", false);
         changed |= SetObjectFieldIfNull(so, "animator", animator);
         changed |= SetObjectFieldIfNull(so, "attackPoint", attackPoint);
-        changed |= SetObjectFieldIfNull(so, "contactPoint", attackPoint);
+        changed |= ClearObjectFieldIfSame(so, "contactPoint", attackPoint);
+        changed |= SetObjectFieldIfNull(so, "bodyCollider", bodyCollider);
         changed |= SetLayerMaskIfZero(so, "playerLayer", LayerMask.GetMask("Player"));
+        changed |= SetBoolField(so, "enableContactDamage", true);
+        changed |= SetBoolField(so, "requirePhysicalTouchForContactDamage", true);
+        changed |= SetFloatFieldMin(so, "contactDamageRange", 0.35f);
+        changed |= SetFloatFieldMin(so, "contactPushbackDistance", 0.3f);
 
         if (changed)
         {
@@ -216,9 +234,9 @@ public static class EnemyAiAutoBinderSetup
         }
 
         bool changed = false;
-        if (Mathf.Approximately(rb.gravityScale, 1f))
+        if (rb.gravityScale <= 0.01f)
         {
-            rb.gravityScale = 0f;
+            rb.gravityScale = 1f;
             changed = true;
         }
 
@@ -235,6 +253,38 @@ public static class EnemyAiAutoBinderSetup
         }
 
         return changed;
+    }
+
+    private static bool EnsureBodyCollider(GameObject go, ref bool sceneChanged)
+    {
+        if (go == null)
+        {
+            return false;
+        }
+
+        Collider2D existing = FindBestCollider(go);
+        if (existing != null)
+        {
+            return false;
+        }
+
+        BoxCollider2D collider = go.AddComponent<BoxCollider2D>();
+        SpriteRenderer spriteRenderer = FindBestSpriteRenderer(go);
+        if (spriteRenderer != null && spriteRenderer.sprite != null)
+        {
+            Vector2 size = spriteRenderer.sprite.bounds.size;
+            collider.size = new Vector2(Mathf.Max(0.2f, size.x * 0.68f), Mathf.Max(0.3f, size.y * 0.92f));
+            collider.offset = spriteRenderer.transform.localPosition + new Vector3(0f, 0.05f, 0f);
+        }
+        else
+        {
+            collider.size = new Vector2(0.7f, 1f);
+            collider.offset = new Vector2(0f, 0.1f);
+        }
+
+        EditorUtility.SetDirty(collider);
+        sceneChanged = true;
+        return true;
     }
 
     private static bool SetObjectField(SerializedObject so, string name, UnityEngine.Object value)
@@ -271,6 +321,23 @@ public static class EnemyAiAutoBinderSetup
         return true;
     }
 
+    private static bool ClearObjectFieldIfSame(SerializedObject so, string name, UnityEngine.Object matchedValue)
+    {
+        SerializedProperty p = so.FindProperty(name);
+        if (p == null || p.propertyType != SerializedPropertyType.ObjectReference)
+        {
+            return false;
+        }
+
+        if (p.objectReferenceValue == null || p.objectReferenceValue != matchedValue)
+        {
+            return false;
+        }
+
+        p.objectReferenceValue = null;
+        return true;
+    }
+
     private static bool SetBoolField(SerializedObject so, string name, bool value)
     {
         SerializedProperty p = so.FindProperty(name);
@@ -285,6 +352,23 @@ public static class EnemyAiAutoBinderSetup
         }
 
         p.boolValue = value;
+        return true;
+    }
+
+    private static bool SetFloatFieldMin(SerializedObject so, string name, float minValue)
+    {
+        SerializedProperty p = so.FindProperty(name);
+        if (p == null || p.propertyType != SerializedPropertyType.Float)
+        {
+            return false;
+        }
+
+        if (p.floatValue >= minValue)
+        {
+            return false;
+        }
+
+        p.floatValue = minValue;
         return true;
     }
 
@@ -331,6 +415,61 @@ public static class EnemyAiAutoBinderSetup
         }
 
         return go.GetComponent<Animator>();
+    }
+
+    private static SpriteRenderer FindBestSpriteRenderer(GameObject go)
+    {
+        if (go == null)
+        {
+            return null;
+        }
+
+        Transform bossVisual = go.transform.Find("BossVisual");
+        if (bossVisual != null)
+        {
+            SpriteRenderer visualRenderer = bossVisual.GetComponent<SpriteRenderer>();
+            if (visualRenderer != null)
+            {
+                return visualRenderer;
+            }
+        }
+
+        SpriteRenderer[] renderers = go.GetComponentsInChildren<SpriteRenderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null)
+            {
+                return renderers[i];
+            }
+        }
+
+        return go.GetComponent<SpriteRenderer>();
+    }
+
+    private static Collider2D FindBestCollider(GameObject go)
+    {
+        if (go == null)
+        {
+            return null;
+        }
+
+        Collider2D rootCollider = go.GetComponent<Collider2D>();
+        if (rootCollider != null && !rootCollider.isTrigger)
+        {
+            return rootCollider;
+        }
+
+        Collider2D[] colliders = go.GetComponentsInChildren<Collider2D>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider2D candidate = colliders[i];
+            if (candidate != null && !candidate.isTrigger)
+            {
+                return candidate;
+            }
+        }
+
+        return rootCollider;
     }
 
     private static Transform FindPlayerTransform(Scene scene)

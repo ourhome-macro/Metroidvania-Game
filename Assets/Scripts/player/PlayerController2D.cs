@@ -3,6 +3,9 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody2D), typeof(Animator))]
 public class PlayerController2D : MonoBehaviour
 {
+    [Header("Config")]
+    [SerializeField] private PlayerConfigSO playerConfig;
+
     [Header("Move")]
     [SerializeField] private float moveSpeed = 6f;
     [SerializeField] private float acceleration = 50f;
@@ -28,12 +31,18 @@ public class PlayerController2D : MonoBehaviour
 
     public bool IsGrounded => isGrounded;
     public int FacingDirection => facingRight ? 1 : -1;
+    public float MoveInput => moveInput;
+    public Vector2 Velocity => rb != null ? rb.velocity : Vector2.zero;
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
         bodyCollider = GetComponent<Collider2D>();
+        facingRight = transform.localScale.x >= 0f;
+
+        ApplyConfig();
+        ResolveGroundCheck();
 
         if (playerCombat == null)
         {
@@ -124,6 +133,38 @@ public class PlayerController2D : MonoBehaviour
         Vector2 checkPos = new Vector2(b.center.x, b.min.y - 0.03f);
         Vector2 checkSize = new Vector2(Mathf.Max(0.05f, b.size.x * 0.7f), 0.08f);
         return Physics2D.OverlapBox(checkPos, checkSize, 0f, effectiveGroundLayer) != null;
+    }
+
+    private void ApplyConfig()
+    {
+        if (playerConfig == null)
+        {
+            return;
+        }
+
+        moveSpeed = Mathf.Max(0.01f, playerConfig.MoveSpeed);
+        acceleration = Mathf.Max(0f, playerConfig.GroundAcceleration);
+        deceleration = Mathf.Max(0f, playerConfig.GroundDeceleration);
+        jumpForce = Mathf.Max(0f, playerConfig.JumpForce);
+    }
+
+    private void ResolveGroundCheck()
+    {
+        if (groundCheck != null)
+        {
+            return;
+        }
+
+        Transform[] transforms = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform candidate = transforms[i];
+            if (candidate != null && candidate != transform && candidate.name.Equals("GroundCheck", System.StringComparison.OrdinalIgnoreCase))
+            {
+                groundCheck = candidate;
+                return;
+            }
+        }
     }
 
     private void UpdateAnimator()

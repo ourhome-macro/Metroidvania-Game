@@ -45,7 +45,7 @@ public class CombatCameraDirector2D : MonoBehaviour
 
     [Header("Parry Feel")]
     [SerializeField] private float parryFovBoost = 10f;
-    [SerializeField] private float parryOrthoSizeBoost = 1f;
+    [SerializeField] private float parryOrthoSizeBoost = -0.45f;
     [SerializeField] private float parryBoostInTime = 0.08f;
     [SerializeField] private float parryBoostOutTime = 0.22f;
     [SerializeField] private float parryHoldTime = 0.08f;
@@ -173,6 +173,11 @@ public class CombatCameraDirector2D : MonoBehaviour
 
     private void HandlePerfectParry()
     {
+        if (dashImpulseSource != null)
+        {
+            dashImpulseSource.GenerateImpulse();
+        }
+
         parryBoostHoldUntil = Time.unscaledTime + Mathf.Max(0f, parryHoldTime);
     }
 
@@ -310,7 +315,7 @@ public class CombatCameraDirector2D : MonoBehaviour
 
     private void ApplyLensProfiles(float fovBoost = 0f)
     {
-        float orthoBoost = Mathf.Max(0f, parryOrthoSizeBoost) * Mathf.Clamp01(fovBoost / Mathf.Max(0.01f, parryFovBoost));
+        float orthoBoost = parryOrthoSizeBoost * Mathf.Clamp01(fovBoost / Mathf.Max(0.01f, Mathf.Abs(parryFovBoost)));
         ApplyLens(vcamNormal, normalFov + fovBoost, normalOrthoSize + orthoBoost);
         ApplyLens(vcamDash, dashFov + fovBoost, dashOrthoSize + orthoBoost);
         ApplyLens(vcamBossUlt, bossUltFov + fovBoost, bossUltOrthoSize + orthoBoost);

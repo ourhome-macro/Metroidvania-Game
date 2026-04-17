@@ -167,9 +167,6 @@ GameObject:
   - component: {fileID: 371025320}
   - component: {fileID: 371025321}
   - component: {fileID: 371025322}
-  - component: {fileID: 371025325}
-  - component: {fileID: 371025324}
-  - component: {fileID: 371025323}
   - component: {fileID: 371025326}
   m_Layer: 6
   m_Name: player
@@ -332,11 +329,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerConfig: {fileID: 11400000, guid: 70fc4735b92dd0b478adb6db2c54a02b, type: 2}
+  moveSpeed: 7.5
+  acceleration: 80
+  deceleration: 100
+  jumpForce: 15
   groundCheck: {fileID: 1817228998}
   groundCheckRadius: 0.12
   groundLayer:
     serializedVersion: 2
     m_Bits: 8
+  playerCombat: {fileID: 371025322}
 --- !u!114 &371025322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -349,56 +351,27 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4926abb77ee8eb2438f90335d9f4803a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hitboxPrefab: {fileID: 1151449129634445177, guid: c2cb3abe636747243a36383506e5a56c, type: 3}
   attackPoint: {fileID: 199214613}
-  attackDuration: 0.1
-  knockbackForce: 10
-  invincibleDuration: 1.5
---- !u!114 &371025323
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 371025316}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 673477c9e88c2c04e9dbfd8585609b87, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  targetLayer:
+  attackRadius: 0.72
+  minimumEffectiveAttackRadius: 0.72
+  enemyLayer:
     serializedVersion: 2
     m_Bits: 128
-  damage: 10
-  knockback: {x: 2, y: 1}
---- !u!114 &371025324
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 371025316}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2c25a6d652457a41b38eceeda182a2f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _maxHp: 100
-  _currentHp: 100
---- !u!114 &371025325
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 371025316}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2c25a6d652457a41b38eceeda182a2f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _maxHp: 100
-  _currentHp: 100
+  attackDamage: 20
+  attackCooldown: 0.35
+  attackLockDuration: 0.35
+  maxHealth: 100
+  hitStunDuration: 0.2
+  postHitInvincibleTime: 0.15
+  defendDamageMultiplier: 0.3
+  perfectParryWindow: 0.65
+  defendMoveMultiplier: 0.35
+  skipInvincibleTime: 0.6
+  skipDuration: 0.18
+  skipSpeed: 12
+  skipCooldown: 1
+  playerController: {fileID: 371025321}
+  logDefenseResult: 1
 --- !u!95 &371025326
 Animator:
   serializedVersion: 5
@@ -689,11 +662,11 @@ GameObject:
   - component: {fileID: 1132094796}
   - component: {fileID: 1132094795}
   - component: {fileID: 1132094794}
-  - component: {fileID: 1132094799}
-  - component: {fileID: 1132094798}
+  - component: {fileID: 1132094800}
+  - component: {fileID: 1132094801}
   m_Layer: 7
   m_Name: enemy
-  m_TagString: enemy
+  m_TagString: Enemy
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -758,7 +731,7 @@ Rigidbody2D:
   m_Mass: 1
   m_LinearDrag: 0
   m_AngularDrag: 0.05
-  m_GravityScale: 0
+  m_GravityScale: 1
   m_Material: {fileID: 0}
   m_IncludeLayers:
     serializedVersion: 2
@@ -768,8 +741,8 @@ Rigidbody2D:
     m_Bits: 0
   m_Interpolate: 0
   m_SleepingMode: 1
-  m_CollisionDetection: 0
-  m_Constraints: 0
+  m_CollisionDetection: 1
+  m_Constraints: 4
 --- !u!212 &1132094796
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -834,10 +807,11 @@ Transform:
   m_LocalPosition: {x: 13.74, y: 1.108, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1132094803}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1132094798
+--- !u!114 &1132094800
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -846,10 +820,29 @@ MonoBehaviour:
   m_GameObject: {fileID: 1132094793}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cceb6f9d5d2b7034a997c67bdb11b0b3, type: 3}
+  m_Script: {fileID: 11500000, guid: 8762f8552dd9f814a9bb7437baa09a26, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &1132094799
+  config: {fileID: 0}
+  playerTarget: {fileID: 371025318}
+  enemyCombat: {fileID: 1132094801}
+  animator: {fileID: 0}
+  visualRoot: {fileID: 0}
+  autoFindPlayerByTag: 1
+  discoveryRangeOverride: -1
+  meleeRangeOverride: -1
+  meleeRangeBuffer: 0.35
+  chaseStopBuffer: 0.2
+  attackVerticalTolerance: 2.5
+  loseTargetRangeMultiplier: 1.25
+  enablePatrol: 0
+  patrolDistance: 2
+  patrolIdleDuration: 0.8
+  patrolSpeedMultiplier: 0.5
+  arriveThreshold: 0.1
+  turnLockDuration: 0.22
+  runningBoolName: isRunning
+--- !u!114 &1132094801
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -858,11 +851,99 @@ MonoBehaviour:
   m_GameObject: {fileID: 1132094793}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2c25a6d652457a41b38eceeda182a2f, type: 3}
+  m_Script: {fileID: 11500000, guid: 2de13d366d177584786974274810b3f3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _maxHp: 100
-  _currentHp: 100
+  maxHealth: 60
+  attackDamage: 15
+  attackCooldown: 1.6
+  attackWindup: 0.35
+  attackRecovery: 0.3
+  minimumEffectiveAttackCooldown: 2.2
+  minimumEffectiveRecovery: 0.45
+  minimumEffectiveAttackRange: 1.15
+  attackPoint: {fileID: 1132094803}
+  attackRange: 0.8
+  playerLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  slowSlashChance: 0.35
+  raisePoseTime: 0.33
+  slowSlashPauseRange: {x: 0.18, y: 0.32}
+  attackClipFps: 12
+  attackHitFrame: 5
+  hitboxActiveDuration: 0.08
+  hideAttackPointOutsideAttack: 1
+  mirrorHitPointsWithFacing: 1
+  enableContactDamage: 1
+  contactDamage: 6
+  contactDamageCooldown: 0.8
+  contactDamageRange: 0.45
+  maximumEffectiveContactDamageRange: 0.75
+  contactBodyRangeFactor: 0.3
+  contactPushbackDistance: 0.4
+  contactPushbackSpeed: 4.8
+  contactPoint: {fileID: 0}
+  requirePhysicalTouchForContactDamage: 1
+  hitBloodFxPrefab: {fileID: 4142488428743669325, guid: 9b58097e26ed1ba4bb627e8e6ba1a4fb, type: 3}
+  hitBloodFxOffset: {x: 0, y: 0.35, z: 0}
+  hitBloodFxSpawnRadius: 0.2
+  hitBloodFxLifetime: 1.5
+  attackTriggerName: Attack
+  attack2TriggerName: Attack2
+  groundSlamTriggerName: GroundSlam
+  hitTriggerName: isHit
+  attack2MinDistance: 2.2
+  groundSlamMinDistance: 4.2
+  groundSlamCooldown: 3.4
+  specialAttackVerticalTolerance: 2.8
+  groundSlamJumpDuration: 0.5
+  groundSlamJumpHeight: 2.1
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 8
+  groundProbeDistance: 14
+  groundLandingPadding: 0.06
+  deathDestroyDelay: 1.1
+  disableCollidersOnDeath: 1
+  deathBoolName: isDead
+  deathTriggerName: Die
+  useInternalAi: 0
+  playerTarget: {fileID: 371025318}
+  engageRange: 2
+  animator: {fileID: 0}
+  bodyCollider: {fileID: 1132094794}
+--- !u!1 &1132094802
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1132094803}
+  m_Layer: 7
+  m_Name: AttackPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1132094803
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1132094802}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.8, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1132094797}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1187377959
 GameObject:
   m_ObjectHideFlags: 0

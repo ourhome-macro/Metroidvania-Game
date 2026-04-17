@@ -24,6 +24,7 @@ public class EnemyAIController2D : MonoBehaviour
     [SerializeField] private float discoveryRangeOverride = -1f;
     [SerializeField] private float meleeRangeOverride = -1f;
     [SerializeField] private float meleeRangeBuffer = 0.35f;
+    [SerializeField] private float chaseStopBuffer = 0.2f;
     [SerializeField] private float attackVerticalTolerance = 2.5f;
     [SerializeField] private float loseTargetRangeMultiplier = 1.25f;
 
@@ -49,6 +50,8 @@ public class EnemyAIController2D : MonoBehaviour
     private int facingDirection = 1;
     private int pendingFacingDirection = 1;
     private float turnLockTimer;
+    private bool attackFacingLocked;
+    private int attackFacingDirection = 1;
 
     private float DiscoveryRange => discoveryRangeOverride > 0f ? discoveryRangeOverride : (config != null ? config.ChaseRange : 6f);
     private float MeleeRange => meleeRangeOverride > 0f ? meleeRangeOverride : (config != null ? config.AttackRange : 1.2f);
@@ -136,6 +139,12 @@ public class EnemyAIController2D : MonoBehaviour
 
     private void UpdateState()
     {
+        if (enemyCombat != null && enemyCombat.IsAttacking)
+        {
+            currentState = EnemyState.Attack;
+            return;
+        }
+
         if (playerTarget == null)
         {
             currentState = EnemyState.IdlePatrol;
@@ -143,10 +152,18 @@ public class EnemyAIController2D : MonoBehaviour
         }
 
         float distance = Vector2.Distance(transform.position, playerTarget.position);
+        float horizontalDistance = Mathf.Abs(playerTarget.position.x - transform.position.x);
+        float verticalDistance = Mathf.Abs(playerTarget.position.y - transform.position.y);
         float discoverRange = DiscoveryRange;
         float loseRange = discoverRange * Mathf.Max(1f, loseTargetRangeMultiplier);
 
         if (IsInMeleeRange())
+        {
+            currentState = EnemyState.Attack;
+            return;
+        }
+
+        if (enemyCombat != null && enemyCombat.ShouldStartSpecialAttack(horizontalDistance, verticalDistance))
         {
             currentState = EnemyState.Attack;
             return;
@@ -238,6 +255,14 @@ public class EnemyAIController2D : MonoBehaviour
             return;
         }
 
+        float closeStopDistance = MeleeRange + Mathf.Max(0f, meleeRangeBuffer) + Mathf.Max(0f, chaseStopBuffer);
+        float distance = Vector2.Distance(transform.position, playerTarget.position);
+        if (distance <= closeStopDistance)
+        {
+            StopHorizontal();
+            return;
+        }
+
         float deltaX = playerTarget.position.x - transform.position.x;
         if (Mathf.Abs(deltaX) <= arriveThreshold)
         {
@@ -259,6 +284,26 @@ public class EnemyAIController2D : MonoBehaviour
     {
         StopHorizontal();
 
+        if (enemyCombat == null)
+        {
+            return;
+        }
+
+        if (enemyCombat.IsAttacking)
+        {
+            if (attackFacingLocked)
+            {
+                enemyCombat.SetFacingDirection(attackFacingDirection);
+            }
+
+            return;
+        }
+
+        if (attackFacingLocked)
+        {
+            attackFacingLocked = false;
+        }
+
         if (playerTarget != null)
         {
             float deltaX = playerTarget.position.x - transform.position.x;
@@ -268,9 +313,11 @@ public class EnemyAIController2D : MonoBehaviour
             }
         }
 
-        if (enemyCombat != null)
+        if (enemyCombat.TryStartAttack())
         {
-            enemyCombat.TryStartAttack();
+            attackFacingLocked = true;
+            attackFacingDirection = facingDirection;
+            enemyCombat.SetFacingDirection(attackFacingDirection);
         }
     }
 

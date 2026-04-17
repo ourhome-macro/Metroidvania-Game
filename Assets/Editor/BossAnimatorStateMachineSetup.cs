@@ -12,10 +12,16 @@ public static class BossAnimatorStateMachineSetup
     private const string ControllerPath = "Assets/Boss/Boss.controller";
     private const string ClipsFolder = "Assets/Boss";
     private const string SessionKey = "BossAnimatorStateMachineSetup.Done";
+    private static readonly bool EnableAutoSetupOnEditorLoad = false;
 
     [InitializeOnLoadMethod]
     private static void AutoSetupOncePerSession()
     {
+        if (!EnableAutoSetupOnEditorLoad)
+        {
+            return;
+        }
+
         if (SessionState.GetBool(SessionKey, false))
         {
             return;
@@ -41,23 +47,25 @@ public static class BossAnimatorStateMachineSetup
     [MenuItem("Tools/Animation/Setup Boss Animator State Machine")]
     public static void SetupStateMachine()
     {
-        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        AnimatorController controller = GetOrCreateControllerAsset(ControllerPath);
         if (controller == null)
         {
-            controller = AnimatorController.CreateAnimatorControllerAtPath(ControllerPath);
-            if (controller == null)
-            {
-                Debug.LogError($"[BossAnimatorSetup] Failed to create controller: {ControllerPath}");
-                return;
-            }
+            Debug.LogError($"[BossAnimatorSetup] Failed to load or create controller: {ControllerPath}");
+            return;
         }
 
         Dictionary<string, AnimationClip> clips = LoadClips();
+        AnimationClip idle = GetClip(clips, "boss_idle") ?? GetClip(clips, "idle");
         AnimationClip walk = GetClip(clips, "boss_walk") ?? GetClip(clips, "walk") ?? GetAnyClip(clips);
         AnimationClip attack = GetClip(clips, "boss_attack") ?? GetClip(clips, "attack") ?? walk;
         AnimationClip attack2 = GetClip(clips, "boss_attack2") ?? attack;
         AnimationClip slam = GetClip(clips, "ground_slam") ?? GetClip(clips, "slam") ?? walk;
         AnimationClip death = GetClip(clips, "boss_death") ?? GetClip(clips, "death") ?? walk;
+
+        if (idle == null)
+        {
+            idle = walk;
+        }
 
         if (walk == null)
         {
@@ -65,6 +73,7 @@ public static class BossAnimatorStateMachineSetup
             return;
         }
 
+        EnsureClipLoop(idle, true);
         EnsureClipLoop(walk, true);
         EnsureClipLoop(attack, false);
         EnsureClipLoop(attack2, false);
@@ -78,38 +87,53 @@ public static class BossAnimatorStateMachineSetup
         AnimatorStateMachine sm = controller.layers[0].stateMachine;
         ClearStateMachine(sm);
 
-        AnimatorState walkState = sm.AddState("Walk", new Vector3(300, 190, 0));
+        AnimatorState idleState = sm.AddState("Idle", new Vector3(130, 190, 0));
+        AnimatorState walkState = sm.AddState("Walk", new Vector3(330, 190, 0));
         AnimatorState attackState = sm.AddState("Attack", new Vector3(580, 80, 0));
         AnimatorState attack2State = sm.AddState("Attack2", new Vector3(580, 155, 0));
         AnimatorState slamState = sm.AddState("GroundSlam", new Vector3(580, 245, 0));
         AnimatorState deathState = sm.AddState("Death", new Vector3(580, 335, 0));
 
+        idleState.motion = idle;
         walkState.motion = walk;
         attackState.motion = attack;
         attack2State.motion = attack2;
         slamState.motion = slam;
         deathState.motion = death;
 
-        sm.defaultState = walkState;
+        sm.defaultState = idleState;
 
+        AddBoolTransition(idleState, walkState, "isRunning", true, false, 0.05f);
+        AddBoolTransition(walkState, idleState, "isRunning", false, false, 0.05f);
+
+        AddTriggerTransition(idleState, attackState, "Attack", 0.03f);
         AddTriggerTransition(walkState, attackState, "Attack", 0.03f);
+        AddTriggerTransition(idleState, attack2State, "Attack2", 0.03f);
         AddTriggerTransition(walkState, attack2State, "Attack2", 0.03f);
+        AddTriggerTransition(idleState, slamState, "GroundSlam", 0.03f);
         AddTriggerTransition(walkState, slamState, "GroundSlam", 0.03f);
         AddAnyStateTriggerTransition(sm, deathState, "Die");
+        AddBoolTransition(idleState, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(walkState, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(attackState, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(attack2State, deathState, "isDead", true, false, 0.02f);
         AddBoolTransition(slamState, deathState, "isDead", true, false, 0.02f);
 
-        AddExitToLocomotion(attackState, walkState, 0.95f);
-        AddExitToLocomotion(attack2State, walkState, 0.95f);
-        AddExitToLocomotion(slamState, walkState, 0.95f);
+        AddExitToLocomotion(attackState, idleState, 0.95f);
+        AddExitToLocomotion(attack2State, idleState, 0.95f);
+        AddExitToLocomotion(slamState, idleState, 0.95f);
 
         BindControllerToBossObjects(controller);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log("[BossAnimatorSetup] Boss animator state machine configured.");
+    }
+
+    [MenuItem("Tools/Animation/Repair Boss Animator Graph")]
+    public static void RepairAnimatorGraph()
+    {
+        SetupStateMachine();
     }
 
     private static void BindControllerToBossObjects(AnimatorController controller)
@@ -292,6 +316,7 @@ public static class BossAnimatorStateMachineSetup
     private static void AddParameters(AnimatorController controller)
     {
         controller.AddParameter("isDead", AnimatorControllerParameterType.Bool);
+        controller.AddParameter("isRunning", AnimatorControllerParameterType.Bool);
         controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("Attack2", AnimatorControllerParameterType.Trigger);
         controller.AddParameter("GroundSlam", AnimatorControllerParameterType.Trigger);
@@ -304,7 +329,17 @@ public static class BossAnimatorStateMachineSetup
         ChildAnimatorState[] states = sm.states;
         for (int i = states.Length - 1; i >= 0; i--)
         {
-            sm.RemoveState(states[i].state);
+            AnimatorState state = states[i].state;
+            if (state == null)
+            {
+                continue;
+            }
+
+            AnimatorStateTransition[] transitions = state.transitions;
+            for (int t = transitions.Length - 1; t >= 0; t--)
+            {
+                state.RemoveTransition(transitions[t]);
+            }
         }
 
         AnimatorStateTransition[] anyTransitions = sm.anyStateTransitions;
@@ -317,6 +352,18 @@ public static class BossAnimatorStateMachineSetup
         for (int i = entryTransitions.Length - 1; i >= 0; i--)
         {
             sm.RemoveEntryTransition(entryTransitions[i]);
+        }
+
+        ChildAnimatorStateMachine[] childStateMachines = sm.stateMachines;
+        for (int i = childStateMachines.Length - 1; i >= 0; i--)
+        {
+            sm.RemoveStateMachine(childStateMachines[i].stateMachine);
+        }
+
+        states = sm.states;
+        for (int i = states.Length - 1; i >= 0; i--)
+        {
+            sm.RemoveState(states[i].state);
         }
     }
 
@@ -470,6 +517,52 @@ public static class BossAnimatorStateMachineSetup
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(walkClip);
             return;
+        }
+    }
+
+    private static AnimatorController GetOrCreateControllerAsset(string controllerPath)
+    {
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+        if (controller != null)
+        {
+            return controller;
+        }
+
+        EnsureFolderForAsset(controllerPath);
+        return AnimatorController.CreateAnimatorControllerAtPath(controllerPath);
+    }
+
+    private static void EnsureFolderForAsset(string assetPath)
+    {
+        int slash = assetPath.LastIndexOf('/');
+        if (slash <= 0)
+        {
+            return;
+        }
+
+        string folder = assetPath.Substring(0, slash);
+        EnsureFolder(folder);
+    }
+
+    private static void EnsureFolder(string folderPath)
+    {
+        if (string.IsNullOrEmpty(folderPath) || AssetDatabase.IsValidFolder(folderPath))
+        {
+            return;
+        }
+
+        int slash = folderPath.LastIndexOf('/');
+        if (slash <= 0)
+        {
+            return;
+        }
+
+        string parent = folderPath.Substring(0, slash);
+        string leaf = folderPath.Substring(slash + 1);
+        EnsureFolder(parent);
+        if (!AssetDatabase.IsValidFolder(folderPath))
+        {
+            AssetDatabase.CreateFolder(parent, leaf);
         }
     }
 }

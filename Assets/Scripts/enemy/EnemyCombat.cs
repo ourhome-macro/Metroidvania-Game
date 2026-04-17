@@ -1,3 +1,4 @@
+﻿using System.Collections.Generic;
 using System.Collections;
 using UnityEngine;
 
@@ -35,6 +36,16 @@ public class EnemyCombat : MonoBehaviour
     [SerializeField] private int attackHitFrame = 5;
     [SerializeField] private float hitboxActiveDuration = 0.08f;
     [SerializeField] private bool hideAttackPointOutsideAttack = true;
+    [SerializeField] private Transform attackPoint1;
+    [SerializeField] private Collider2D attackRange1;
+    [SerializeField] private Collider2D groundSlamRange2;
+    [SerializeField] private Collider2D attack2Range;
+    [SerializeField] private int attackRange1StartFrame = 6;
+    [SerializeField] private int attackRange1EndFrame = -1;
+    [SerializeField] private int groundSlamRange2StartFrame = 9;
+    [SerializeField] private int groundSlamRange2EndFrame = 17;
+    [SerializeField] private int attack2RangeStartFrame = 12;
+    [SerializeField] private int attack2RangeEndFrame = 29;
 
     [Header("Facing")]
     [SerializeField] private bool mirrorHitPointsWithFacing = true;
@@ -45,8 +56,21 @@ public class EnemyCombat : MonoBehaviour
     [SerializeField] private float contactDamageCooldown = 0.8f;
     [SerializeField] private float contactDamageRange = 0.45f;
     [SerializeField] private float maximumEffectiveContactDamageRange = 0.75f;
+    [SerializeField] private float contactBodyRangeFactor = 0.3f;
+    [SerializeField] private float contactPushbackDistance = 0.4f;
+    [SerializeField] private float contactPushbackSpeed = 4.8f;
     [SerializeField] private Transform contactPoint;
     [SerializeField] private bool requirePhysicalTouchForContactDamage = true;
+
+    [Header("Hit VFX")]
+    [SerializeField] private GameObject hitBloodFxPrefab;
+    [SerializeField] private Vector3 hitBloodFxOffset = new Vector3(0f, 0.35f, 0f);
+    [SerializeField] private float hitBloodFxSpawnRadius = 0.2f;
+    [SerializeField] private float hitBloodFxLifetime = 1.5f;
+    [SerializeField] private float hitBloodFxScaleMultiplier = 1.65f;
+    [SerializeField] private bool hitBloodFxUseEnemyLayer = true;
+    [SerializeField] private bool alignHitBloodFxSortingWithEnemy = true;
+    [SerializeField] private int hitBloodFxSortingOrderBoost = 6;
 
     [Header("Animator Params")]
     [SerializeField] private string attackTriggerName = "Attack";
@@ -55,13 +79,25 @@ public class EnemyCombat : MonoBehaviour
     [SerializeField] private string hitTriggerName = "isHit";
 
     [Header("Boss Skill Routing")]
-    [SerializeField] private float attack2MinDistance = 1.8f;
-    [SerializeField] private float groundSlamMinDistance = 3.2f;
-    [SerializeField] private float groundSlamCooldown = 2.8f;
+    [SerializeField] private float attack2MinDistance = 2.2f;
+    [SerializeField] private float groundSlamMinDistance = 4.2f;
+    [SerializeField] private float groundSlamCooldown = 3.4f;
+    [SerializeField] private float specialAttackVerticalTolerance = 2.8f;
 
     [Header("Ground Slam Jump")]
-    [SerializeField] private float groundSlamJumpDuration = 0.4f;
-    [SerializeField] private float groundSlamJumpHeight = 1.6f;
+    [SerializeField] private float groundSlamJumpDuration = 0.5f;
+    [SerializeField] private float groundSlamJumpHeight = 2.1f;
+    [SerializeField] private LayerMask groundLayer;
+    [SerializeField] private float groundProbeDistance = 14f;
+    [SerializeField] private float groundLandingPadding = 0.06f;
+
+    [Header("Death")]
+    [SerializeField] private float deathDestroyDelay = 1.1f;
+    [SerializeField] private bool disableCollidersOnDeath = true;
+    [SerializeField] private bool keepBossSolidCollidersOnDeath = true;
+    [SerializeField] private bool freezeBossRigidbodyOnDeath = true;
+    [SerializeField] private string deathBoolName = "isDead";
+    [SerializeField] private string deathTriggerName = "Die";
 
     [Header("AI")]
     [SerializeField] private bool useInternalAi = true;
@@ -82,21 +118,29 @@ public class EnemyCombat : MonoBehaviour
     private bool hasAttack2TriggerParam;
     private bool hasGroundSlamTriggerParam;
     private bool hasHitTriggerParam;
+    private bool hasDeathBoolParam;
+    private bool hasDeathTriggerParam;
     private bool loggedMissingAttackTrigger;
     private bool loggedMissingAttack2Trigger;
     private bool loggedMissingGroundSlamTrigger;
     private bool loggedMissingHitTrigger;
+    private bool loggedMissingDeathTrigger;
+    private bool loggedMissingHitBloodFx;
     private Coroutine attackRoutine;
     private int attackToken;
     private bool contactDamageActiveByAi = true;
     private float nextContactDamageAllowedTime = -999f;
     private Vector3 attackPointBaseLocalPosition;
+    private Vector3 attackPoint1BaseLocalPosition;
     private Vector3 contactPointBaseLocalPosition;
     private bool cachedHitPointLocalOffsets;
     private int facingDirection = 1;
-    private bool attackPointVisible;
     private Rigidbody2D rb;
     private float nextGroundSlamAllowedTime = -999f;
+    private bool deathSequenceStarted;
+    private readonly List<Collider2D> attackOverlapResults = new List<Collider2D>(16);
+    private readonly HashSet<PlayerCombat> damagedPlayersThisAttack = new HashSet<PlayerCombat>();
+    private readonly List<AnimatorClipInfo> clipInfoBuffer = new List<AnimatorClipInfo>(2);
 
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
@@ -125,20 +169,18 @@ public class EnemyCombat : MonoBehaviour
             }
         }
 
+        attackPoint = ResolveNamedChildTransform(attackPoint, "AttackPoint");
+        attackPoint1 = ResolveNamedChildTransform(attackPoint1, "attackpoint1");
+        contactPoint = ResolveNamedChildTransform(contactPoint, "ContactPoint");
+        ResolveAttackRangeColliders();
+        bodyCollider = ResolveBodyCollider();
+
         CacheAnimatorParams();
         CacheHitPointOffsets();
 
-        if (bodyCollider == null)
-        {
-            bodyCollider = GetComponent<Collider2D>();
-        }
-
         SetFacingDirection(facingDirection);
-        if (attackPoint != null)
-        {
-            attackPointVisible = attackPoint.gameObject.activeSelf;
-        }
         SetAttackPointVisible(!hideAttackPointOutsideAttack);
+        SetAllAttackHitboxesEnabled(false);
 
         currentHealth = Mathf.Max(1, maxHealth);
 
@@ -223,12 +265,42 @@ public class EnemyCombat : MonoBehaviour
         return true;
     }
 
+    public bool ShouldStartSpecialAttack(float horizontalDistance, float verticalDistance)
+    {
+        if (isDead || isAttacking || Time.time < nextAttackAllowedTime)
+        {
+            return false;
+        }
+
+        if (verticalDistance > Mathf.Max(0f, specialAttackVerticalTolerance))
+        {
+            return false;
+        }
+
+        if (hasGroundSlamTriggerParam && horizontalDistance >= Mathf.Max(0f, groundSlamMinDistance) && Time.time >= nextGroundSlamAllowedTime)
+        {
+            return true;
+        }
+
+        if (hasAttack2TriggerParam && horizontalDistance >= Mathf.Max(0f, attack2MinDistance))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     private IEnumerator AttackRoutine(int token, AttackMode mode)
     {
         isAttacking = true;
         currentAttackStartTime = Time.time;
         nextAttackAllowedTime = float.MaxValue;
-        SetAttackPointVisible(false);
+        if (hideAttackPointOutsideAttack)
+        {
+            SetAttackPointVisible(false);
+        }
+        SetAllAttackHitboxesEnabled(false);
+        damagedPlayersThisAttack.Clear();
 
         string triggerName = GetTriggerName(mode);
         bool triggerExists = GetTriggerExists(mode);
@@ -249,6 +321,40 @@ public class EnemyCombat : MonoBehaviour
             }
         }
 
+        if (token == attackToken && !isDead)
+        {
+            if (HasFrameWindowHitbox(mode))
+            {
+                yield return RunFrameBasedAttackWindow(token, mode);
+            }
+            else
+            {
+                yield return RunLegacyAttackWindow(token, mode);
+            }
+        }
+
+        float recovery = EffectiveAttackRecovery;
+        if (recovery > 0f)
+        {
+            yield return new WaitForSeconds(recovery);
+        }
+
+        if (token == attackToken)
+        {
+            attackRoutine = null;
+            isAttacking = false;
+            nextAttackAllowedTime = Time.time + Mathf.Max(0f, EffectiveAttackCooldown);
+            SetAllAttackHitboxesEnabled(false);
+
+            if (hideAttackPointOutsideAttack)
+            {
+                SetAttackPointVisible(false);
+            }
+        }
+    }
+
+    private IEnumerator RunLegacyAttackWindow(int token, AttackMode mode)
+    {
         float preHitRaise = Mathf.Min(Mathf.Max(0f, raisePoseTime), Mathf.Max(0f, attackWindup));
         if (preHitRaise > 0f)
         {
@@ -301,24 +407,59 @@ public class EnemyCombat : MonoBehaviour
                 SetAttackPointVisible(false);
             }
         }
+    }
 
-        float recovery = EffectiveAttackRecovery;
-        if (recovery > 0f)
+    private IEnumerator RunFrameBasedAttackWindow(int token, AttackMode mode)
+    {
+        if (mode == AttackMode.GroundSlam)
         {
-            yield return new WaitForSeconds(recovery);
+            yield return PerformGroundSlamJump();
+            nextGroundSlamAllowedTime = Time.time + Mathf.Max(0.25f, groundSlamCooldown);
         }
 
-        if (token == attackToken)
+        bool enteredAttackState = false;
+        float stateEnterDeadline = Time.time + Mathf.Max(0.3f, attackWindup + 1f);
+        string stateName = GetStateNameForMode(mode);
+        SetHitboxActiveForMode(mode, false);
+        while (token == attackToken && !isDead)
         {
-            attackRoutine = null;
-            isAttacking = false;
-            nextAttackAllowedTime = Time.time + Mathf.Max(0f, EffectiveAttackCooldown);
-
-            if (hideAttackPointOutsideAttack)
+            if (!TryGetAnimatorState(stateName, out AnimatorStateInfo stateInfo, out AnimationClip clip))
             {
-                SetAttackPointVisible(false);
+                if (enteredAttackState || Time.time >= stateEnterDeadline)
+                {
+                    break;
+                }
+
+                yield return null;
+                continue;
             }
+
+            enteredAttackState = true;
+            int totalFrames = GetClipFrameCount(clip);
+            int currentFrame = GetCurrentFrame(stateInfo, totalFrames);
+            GetFrameWindow(mode, totalFrames, out int startFrame, out int endFrame);
+            bool hitboxActive = currentFrame >= startFrame && currentFrame <= endFrame;
+            SetHitboxActiveForMode(mode, hitboxActive);
+            if (hitboxActive)
+            {
+                DealDamageToPlayer(mode);
+            }
+
+            if (stateInfo.normalizedTime >= 1f && !animator.IsInTransition(0))
+            {
+                break;
+            }
+
+            yield return null;
         }
+
+        if (!enteredAttackState && token == attackToken && !isDead)
+        {
+            SetHitboxActiveForMode(mode, true);
+            DealDamageToPlayer(mode);
+        }
+
+        SetHitboxActiveForMode(mode, false);
     }
 
     private AttackMode ChooseAttackMode()
@@ -376,7 +517,9 @@ public class EnemyCombat : MonoBehaviour
         float duration = Mathf.Max(0.08f, groundSlamJumpDuration);
         float height = Mathf.Max(0f, groundSlamJumpHeight);
         Vector2 start = rb.position;
-        Vector2 target = new Vector2(playerTarget.position.x, playerTarget.position.y);
+        float targetX = playerTarget.position.x;
+        float targetY = ResolveGroundSlamLandingY(targetX, start.y);
+        Vector2 target = new Vector2(targetX, targetY);
         float elapsed = 0f;
 
         while (elapsed < duration)
@@ -390,16 +533,92 @@ public class EnemyCombat : MonoBehaviour
         }
 
         rb.MovePosition(target);
+        if (rb.gravityScale > 0f)
+        {
+            Vector2 v = rb.velocity;
+            rb.velocity = new Vector2(v.x, Mathf.Min(v.y, -1.5f));
+        }
+    }
+
+    private float ResolveGroundSlamLandingY(float targetX, float fallbackY)
+    {
+        float probeDistance = Mathf.Max(2f, groundProbeDistance);
+        float rayOriginY = Mathf.Max(transform.position.y, playerTarget != null ? playerTarget.position.y : fallbackY) + 2f;
+        int mask = groundLayer.value == 0 ? LayerMask.GetMask("Ground") : groundLayer.value;
+        if (mask == 0)
+        {
+            return fallbackY;
+        }
+
+        RaycastHit2D[] hits = Physics2D.RaycastAll(new Vector2(targetX, rayOriginY), Vector2.down, probeDistance, mask);
+        if (hits == null || hits.Length == 0)
+        {
+            return fallbackY;
+        }
+
+        RaycastHit2D bestHit = default;
+        bool found = false;
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider2D hitCollider = hits[i].collider;
+            if (hitCollider == null || hitCollider.transform.IsChildOf(transform) || hitCollider.isTrigger)
+            {
+                continue;
+            }
+
+            bestHit = hits[i];
+            found = true;
+            break;
+        }
+
+        if (!found)
+        {
+            return fallbackY;
+        }
+
+        float bottomOffset = 0f;
+        if (bodyCollider != null)
+        {
+            float pivotY = rb != null ? rb.position.y : transform.position.y;
+            bottomOffset = Mathf.Max(0f, pivotY - bodyCollider.bounds.min.y);
+        }
+
+        return bestHit.point.y + bottomOffset + Mathf.Max(0f, groundLandingPadding);
     }
 
     /// <summary>
-    /// 可被动画事件调用，也可由协程兜底调用。
+    /// 閸欘垵顫﹂崝銊ф暰娴滃娆㈢拫鍐暏閿涘奔绡冮崣顖滄暠閸楀繒鈻奸崗婊冪俺鐠嬪啰鏁ら妴?
     /// </summary>
     public void DealDamageToPlayer()
     {
+        Collider2D activeRange = GetActiveRangeHitbox();
+        if (activeRange != null)
+        {
+            DealDamageToPlayer(activeRange);
+            return;
+        }
+
+        DealDamageToPlayerByCircle();
+    }
+
+    private void DealDamageToPlayer(AttackMode mode)
+    {
+        Collider2D range = GetRangeHitboxForMode(mode);
+        if (range != null)
+        {
+            DealDamageToPlayer(range);
+            return;
+        }
+
+        DealDamageToPlayerByCircle();
+    }
+
+    private void DealDamageToPlayerByCircle()
+    {
+        attackPoint = ResolveNamedChildTransform(attackPoint, "AttackPoint");
         if (attackPoint == null)
         {
-            Debug.LogWarning("[EnemyCombat] attackPoint 未配置，无法攻击玩家。", this);
+            Debug.LogWarning("[EnemyCombat] attackPoint is not assigned, cannot attack player.", this);
             return;
         }
 
@@ -408,20 +627,54 @@ public class EnemyCombat : MonoBehaviour
         for (int i = 0; i < cols.Length; i++)
         {
             PlayerCombat player = cols[i].GetComponentInParent<PlayerCombat>();
-            if (player == null)
+            if (player == null || !damagedPlayersThisAttack.Add(player))
             {
                 continue;
             }
 
-            AttackData data = new AttackData(
-                attackDamage,
-                this,
-                currentAttackStartTime,
-                attackPoint.position
-            );
-
-            player.ReceiveAttack(data);
+            SendAttackData(player, attackPoint.position);
         }
+    }
+
+    private void DealDamageToPlayer(Collider2D hitbox)
+    {
+        if (hitbox == null || !hitbox.enabled || !hitbox.gameObject.activeInHierarchy)
+        {
+            return;
+        }
+
+        int mask = playerLayer.value == 0 ? Physics2D.AllLayers : playerLayer.value;
+        ContactFilter2D filter = new ContactFilter2D();
+        filter.useLayerMask = true;
+        filter.layerMask = mask;
+        filter.useTriggers = true;
+        attackOverlapResults.Clear();
+        int count = hitbox.OverlapCollider(filter, attackOverlapResults);
+        for (int i = 0; i < count; i++)
+        {
+            PlayerCombat player = attackOverlapResults[i].GetComponentInParent<PlayerCombat>();
+            if (player == null || !damagedPlayersThisAttack.Add(player))
+            {
+                continue;
+            }
+
+            Vector2 hitPoint = hitbox.bounds.center;
+            SendAttackData(player, hitPoint);
+        }
+
+        attackOverlapResults.Clear();
+    }
+
+    private void SendAttackData(PlayerCombat player, Vector2 hitPoint)
+    {
+        AttackData data = new AttackData(
+            attackDamage,
+            this,
+            currentAttackStartTime,
+            hitPoint
+        );
+
+        player.ReceiveAttack(data);
     }
 
     public void TakeDamage(int damage, PlayerCombat source)
@@ -439,6 +692,7 @@ public class EnemyCombat : MonoBehaviour
 
         currentHealth = Mathf.Max(0, currentHealth - finalDamage);
 
+        SpawnHitBloodFx(source);
         PlayHit();
 
         if (currentHealth <= 0)
@@ -447,8 +701,228 @@ public class EnemyCombat : MonoBehaviour
         }
     }
 
+    private void SpawnHitBloodFx(PlayerCombat source)
+    {
+        float radius = Mathf.Max(0f, hitBloodFxSpawnRadius);
+        Vector2 randomOffset = radius > 0f ? Random.insideUnitCircle * radius : Vector2.zero;
+        Vector3 spawnPosition = ResolveHitBloodSpawnBasePosition() + hitBloodFxOffset + new Vector3(randomOffset.x, randomOffset.y, 0f);
+
+        int hitFromDirection = 1;
+        if (source != null)
+        {
+            hitFromDirection = source.transform.position.x <= transform.position.x ? 1 : -1;
+        }
+        else if (playerTarget != null)
+        {
+            hitFromDirection = playerTarget.position.x <= transform.position.x ? 1 : -1;
+        }
+
+        Quaternion rotation = hitFromDirection < 0
+            ? Quaternion.Euler(0f, 180f, 0f)
+            : Quaternion.identity;
+
+        if (hitBloodFxPrefab == null)
+        {
+            SpawnFallbackHitBloodFx(spawnPosition, hitFromDirection);
+            return;
+        }
+
+        GameObject fx = Instantiate(hitBloodFxPrefab, spawnPosition, rotation);
+        ConfigureHitBloodFxInstance(fx);
+        Destroy(fx, Mathf.Max(0.2f, hitBloodFxLifetime));
+    }
+
+    private void SpawnFallbackHitBloodFx(Vector3 spawnPosition, int hitFromDirection)
+    {
+        if (!loggedMissingHitBloodFx)
+        {
+            loggedMissingHitBloodFx = true;
+            Debug.LogWarning("[EnemyCombat] hitBloodFxPrefab is missing, using fallback blood effect.", this);
+        }
+
+        GameObject go = new GameObject("BloodHitFallbackFx");
+        go.transform.position = spawnPosition;
+        go.transform.rotation = hitFromDirection < 0 ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity;
+        ParticleSystem ps = go.AddComponent<ParticleSystem>();
+        ParticleSystemRenderer renderer = go.GetComponent<ParticleSystemRenderer>();
+
+        ParticleSystem.MainModule main = ps.main;
+        main.loop = false;
+        main.playOnAwake = true;
+        main.duration = 0.28f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.16f, 0.32f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(3.5f, 6.5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.025f, 0.07f);
+        main.startColor = new ParticleSystem.MinMaxGradient(
+            new Color(0.42f, 0.04f, 0.04f, 0.95f),
+            new Color(0.58f, 0.06f, 0.06f, 0.95f)
+        );
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.gravityModifier = 0.65f;
+        main.stopAction = ParticleSystemStopAction.Destroy;
+
+        ParticleSystem.EmissionModule emission = ps.emission;
+        emission.enabled = true;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[]
+        {
+            new ParticleSystem.Burst(0f, (short)10, (short)16, 1, 0.01f)
+        });
+
+        ParticleSystem.ShapeModule shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 18f;
+        shape.radius = 0.02f;
+        shape.arc = 22f;
+        shape.rotation = new Vector3(0f, -90f, 0f);
+
+        if (renderer != null)
+        {
+            renderer.sortingOrder = 20;
+        }
+
+        ConfigureHitBloodFxInstance(go);
+        Destroy(go, Mathf.Max(0.4f, hitBloodFxLifetime));
+    }
+
+    private Vector3 ResolveHitBloodSpawnBasePosition()
+    {
+        if (bodyCollider != null)
+        {
+            Bounds b = bodyCollider.bounds;
+            float y = Mathf.Lerp(b.min.y, b.max.y, 0.62f);
+            return new Vector3(b.center.x, y, b.center.z);
+        }
+
+        return transform.position;
+    }
+
+    private void ConfigureHitBloodFxInstance(GameObject fx)
+    {
+        if (fx == null)
+        {
+            return;
+        }
+
+        ApplyHitBloodFxTransformAndLayer(fx);
+        EnsureHitBloodFxVisible(fx);
+        ForcePlayAllParticleSystems(fx);
+    }
+
+    private void ApplyHitBloodFxTransformAndLayer(GameObject fx)
+    {
+        if (fx == null)
+        {
+            return;
+        }
+
+        float scale = Mathf.Max(0.01f, hitBloodFxScaleMultiplier);
+        fx.transform.localScale = Vector3.Scale(fx.transform.localScale, new Vector3(scale, scale, 1f));
+
+        if (!hitBloodFxUseEnemyLayer)
+        {
+            return;
+        }
+
+        int layer = gameObject.layer;
+        ApplyLayerRecursively(fx.transform, layer);
+    }
+
+    private void ApplyLayerRecursively(Transform root, int layer)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        root.gameObject.layer = layer;
+        for (int i = 0; i < root.childCount; i++)
+        {
+            ApplyLayerRecursively(root.GetChild(i), layer);
+        }
+    }
+
+    private void EnsureHitBloodFxVisible(GameObject fx)
+    {
+        int boostedOrder = Mathf.Max(1, hitBloodFxSortingOrderBoost);
+        int targetOrder = boostedOrder;
+        int targetLayerId = 0;
+        bool hasTargetLayer = false;
+        int highestOwnerSortingOrder = int.MinValue;
+
+        if (alignHitBloodFxSortingWithEnemy)
+        {
+            SpriteRenderer[] ownerRenderers = GetComponentsInChildren<SpriteRenderer>(true);
+            for (int i = 0; i < ownerRenderers.Length; i++)
+            {
+                SpriteRenderer ownerRenderer = ownerRenderers[i];
+                if (ownerRenderer == null)
+                {
+                    continue;
+                }
+
+                if (ownerRenderer.sortingOrder > highestOwnerSortingOrder)
+                {
+                    highestOwnerSortingOrder = ownerRenderer.sortingOrder;
+                    targetLayerId = ownerRenderer.sortingLayerID;
+                    hasTargetLayer = true;
+                }
+
+                targetOrder = Mathf.Max(targetOrder, ownerRenderer.sortingOrder + boostedOrder);
+            }
+        }
+
+        ParticleSystemRenderer[] fxRenderers = fx.GetComponentsInChildren<ParticleSystemRenderer>(true);
+        for (int i = 0; i < fxRenderers.Length; i++)
+        {
+            ParticleSystemRenderer fxRenderer = fxRenderers[i];
+            if (fxRenderer == null)
+            {
+                continue;
+            }
+
+            if (hasTargetLayer)
+            {
+                fxRenderer.sortingLayerID = targetLayerId;
+            }
+
+            fxRenderer.sortingOrder = Mathf.Max(fxRenderer.sortingOrder, targetOrder);
+        }
+
+        SpriteRenderer[] fxSpriteRenderers = fx.GetComponentsInChildren<SpriteRenderer>(true);
+        for (int i = 0; i < fxSpriteRenderers.Length; i++)
+        {
+            SpriteRenderer fxRenderer = fxSpriteRenderers[i];
+            if (fxRenderer == null)
+            {
+                continue;
+            }
+
+            if (hasTargetLayer)
+            {
+                fxRenderer.sortingLayerID = targetLayerId;
+            }
+
+            fxRenderer.sortingOrder = Mathf.Max(fxRenderer.sortingOrder, targetOrder);
+        }
+    }
+
+    private void ForcePlayAllParticleSystems(GameObject fx)
+    {
+        ParticleSystem[] allFxParticleSystems = fx.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < allFxParticleSystems.Length; i++)
+        {
+            ParticleSystem ps = allFxParticleSystems[i];
+            if (ps != null)
+            {
+                ps.Play(true);
+            }
+        }
+    }
+
     /// <summary>
-    /// 被完美弹反时调用：返还伤害并打断当前攻击。
+    /// 鐞氼偄鐣紘搴¤剨閸欏秵妞傜拫鍐暏閿涙俺绻戞潻妯规縺鐎瑰啿鑻熼幍鎾存焽瑜版挸澧犻弨璇插毊閵?
     /// </summary>
     public void OnParried(int reflectedDamage, Vector2 parrySourcePosition)
     {
@@ -478,6 +952,8 @@ public class EnemyCombat : MonoBehaviour
         hasAttack2TriggerParam = false;
         hasGroundSlamTriggerParam = false;
         hasHitTriggerParam = false;
+        hasDeathBoolParam = false;
+        hasDeathTriggerParam = false;
 
         if (animator == null)
         {
@@ -487,29 +963,39 @@ public class EnemyCombat : MonoBehaviour
         AnimatorControllerParameter[] parameters = animator.parameters;
         for (int i = 0; i < parameters.Length; i++)
         {
-            if (parameters[i].type != AnimatorControllerParameterType.Trigger)
+            AnimatorControllerParameter parameter = parameters[i];
+
+            if (parameter.type == AnimatorControllerParameterType.Trigger)
             {
-                continue;
+                if (parameter.name == attackTriggerName)
+                {
+                    hasAttackTriggerParam = true;
+                }
+
+                if (parameter.name == attack2TriggerName)
+                {
+                    hasAttack2TriggerParam = true;
+                }
+
+                if (parameter.name == groundSlamTriggerName)
+                {
+                    hasGroundSlamTriggerParam = true;
+                }
+
+                if (parameter.name == hitTriggerName)
+                {
+                    hasHitTriggerParam = true;
+                }
+
+                if (parameter.name == deathTriggerName)
+                {
+                    hasDeathTriggerParam = true;
+                }
             }
 
-            if (parameters[i].name == attackTriggerName)
+            if (parameter.type == AnimatorControllerParameterType.Bool && parameter.name == deathBoolName)
             {
-                hasAttackTriggerParam = true;
-            }
-
-            if (parameters[i].name == attack2TriggerName)
-            {
-                hasAttack2TriggerParam = true;
-            }
-
-            if (parameters[i].name == groundSlamTriggerName)
-            {
-                hasGroundSlamTriggerParam = true;
-            }
-
-            if (parameters[i].name == hitTriggerName)
-            {
-                hasHitTriggerParam = true;
+                hasDeathBoolParam = true;
             }
         }
     }
@@ -539,6 +1025,327 @@ public class EnemyCombat : MonoBehaviour
         animator.SetTrigger(triggerName);
     }
 
+    private Transform ResolveNamedChildTransform(Transform current, string desiredName)
+    {
+        if (current != null)
+        {
+            return current;
+        }
+
+        Transform[] transforms = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform candidate = transforms[i];
+            if (candidate != null && candidate != transform && candidate.name.Equals(desiredName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private Collider2D ResolveNamedChildCollider(Collider2D current, Transform root, string desiredName)
+    {
+        if (current != null)
+        {
+            return current;
+        }
+
+        if (root == null)
+        {
+            return null;
+        }
+
+        Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform candidate = transforms[i];
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            if (!candidate.name.Equals(desiredName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            Collider2D hitbox = candidate.GetComponent<Collider2D>();
+            if (hitbox != null)
+            {
+                return hitbox;
+            }
+        }
+
+        return null;
+    }
+
+    private void ResolveAttackRangeColliders()
+    {
+        attackPoint = ResolveNamedChildTransform(attackPoint, "AttackPoint");
+        attackPoint1 = ResolveNamedChildTransform(attackPoint1, "attackpoint1");
+        attackRange1 = ResolveNamedChildCollider(attackRange1, attackPoint1, "Range1");
+        groundSlamRange2 = ResolveNamedChildCollider(groundSlamRange2, attackPoint1, "Range2");
+        attack2Range = ResolveNamedChildCollider(attack2Range, attackPoint, "Range");
+
+        if (attackRange1 == null)
+        {
+            attackRange1 = FindFirstTriggerCollider(attackPoint1);
+        }
+
+        if (groundSlamRange2 == null && attackPoint1 != null)
+        {
+            Collider2D[] candidates = attackPoint1.GetComponentsInChildren<Collider2D>(true);
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                Collider2D candidate = candidates[i];
+                if (candidate == null || !candidate.isTrigger || candidate == attackRange1)
+                {
+                    continue;
+                }
+
+                groundSlamRange2 = candidate;
+                break;
+            }
+        }
+
+        if (attack2Range == null)
+        {
+            attack2Range = FindFirstTriggerCollider(attackPoint);
+        }
+    }
+
+    private Collider2D FindFirstTriggerCollider(Transform root)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        Collider2D[] colliders = root.GetComponentsInChildren<Collider2D>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider2D candidate = colliders[i];
+            if (candidate != null && candidate.isTrigger)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private bool HasFrameWindowHitbox(AttackMode mode)
+    {
+        return animator != null && GetRangeHitboxForMode(mode) != null;
+    }
+
+    private Collider2D GetRangeHitboxForMode(AttackMode mode)
+    {
+        ResolveAttackRangeColliders();
+        switch (mode)
+        {
+            case AttackMode.Attack2:
+                return attack2Range;
+            case AttackMode.GroundSlam:
+                return groundSlamRange2;
+            default:
+                return attackRange1;
+        }
+    }
+
+    private Transform GetAttackPointForMode(AttackMode mode)
+    {
+        switch (mode)
+        {
+            case AttackMode.Attack2:
+                return attackPoint;
+            case AttackMode.GroundSlam:
+            case AttackMode.Attack:
+                return attackPoint1 != null ? attackPoint1 : attackPoint;
+            default:
+                return attackPoint;
+        }
+    }
+
+    private void SetAllAttackHitboxesEnabled(bool enabled)
+    {
+        SetHitboxEnabled(attackRange1, enabled);
+        SetHitboxEnabled(groundSlamRange2, enabled);
+        SetHitboxEnabled(attack2Range, enabled);
+    }
+
+    private void SetHitboxActiveForMode(AttackMode mode, bool active)
+    {
+        Collider2D hitbox = GetRangeHitboxForMode(mode);
+        if (hitbox == null)
+        {
+            return;
+        }
+
+        Transform owner = GetAttackPointForMode(mode);
+        if (owner != null && hideAttackPointOutsideAttack)
+        {
+            SetAttackRootVisible(owner, active);
+        }
+
+        SetHitboxEnabled(hitbox, active);
+    }
+
+    private static void SetHitboxEnabled(Collider2D hitbox, bool enabled)
+    {
+        if (hitbox == null || hitbox.enabled == enabled)
+        {
+            return;
+        }
+
+        hitbox.enabled = enabled;
+    }
+
+    private Collider2D GetActiveRangeHitbox()
+    {
+        if (attackRange1 != null && attackRange1.enabled && attackRange1.gameObject.activeInHierarchy)
+        {
+            return attackRange1;
+        }
+
+        if (groundSlamRange2 != null && groundSlamRange2.enabled && groundSlamRange2.gameObject.activeInHierarchy)
+        {
+            return groundSlamRange2;
+        }
+
+        if (attack2Range != null && attack2Range.enabled && attack2Range.gameObject.activeInHierarchy)
+        {
+            return attack2Range;
+        }
+
+        return null;
+    }
+
+    private string GetStateNameForMode(AttackMode mode)
+    {
+        switch (mode)
+        {
+            case AttackMode.Attack2:
+                return "Attack2";
+            case AttackMode.GroundSlam:
+                return "GroundSlam";
+            default:
+                return "Attack";
+        }
+    }
+
+    private bool TryGetAnimatorState(string stateName, out AnimatorStateInfo stateInfo, out AnimationClip clip)
+    {
+        stateInfo = default;
+        clip = null;
+        if (animator == null || string.IsNullOrEmpty(stateName))
+        {
+            return false;
+        }
+
+        AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
+        if (!AnimatorStateMatches(current, stateName))
+        {
+            return false;
+        }
+
+        stateInfo = current;
+        animator.GetCurrentAnimatorClipInfo(0, clipInfoBuffer);
+        if (clipInfoBuffer.Count > 0)
+        {
+            clip = clipInfoBuffer[0].clip;
+        }
+        clipInfoBuffer.Clear();
+        return true;
+    }
+
+    private static bool AnimatorStateMatches(AnimatorStateInfo stateInfo, string stateName)
+    {
+        return stateInfo.IsName(stateName) || stateInfo.shortNameHash == Animator.StringToHash(stateName);
+    }
+
+    private int GetClipFrameCount(AnimationClip clip)
+    {
+        if (clip != null)
+        {
+            float fps = Mathf.Max(1f, clip.frameRate);
+            return Mathf.Max(1, Mathf.RoundToInt(clip.length * fps));
+        }
+
+        float fallbackFps = Mathf.Max(1f, attackClipFps);
+        float fallbackDuration = Mathf.Max(0.1f, attackWindup + attackRecovery + hitboxActiveDuration);
+        return Mathf.Max(1, Mathf.RoundToInt(fallbackDuration * fallbackFps));
+    }
+
+    private static int GetCurrentFrame(AnimatorStateInfo stateInfo, int totalFrames)
+    {
+        float normalized = stateInfo.loop
+            ? stateInfo.normalizedTime - Mathf.Floor(stateInfo.normalizedTime)
+            : Mathf.Clamp01(stateInfo.normalizedTime);
+        int frame = Mathf.FloorToInt(normalized * totalFrames) + 1;
+        return Mathf.Clamp(frame, 1, totalFrames);
+    }
+
+    private void GetFrameWindow(AttackMode mode, int totalFrames, out int startFrame, out int endFrame)
+    {
+        switch (mode)
+        {
+            case AttackMode.Attack2:
+                startFrame = NormalizeFrameBoundary(attack2RangeStartFrame, totalFrames, 1);
+                endFrame = NormalizeFrameBoundary(attack2RangeEndFrame, totalFrames, totalFrames);
+                break;
+            case AttackMode.GroundSlam:
+                startFrame = NormalizeFrameBoundary(groundSlamRange2StartFrame, totalFrames, 1);
+                endFrame = NormalizeFrameBoundary(groundSlamRange2EndFrame, totalFrames, totalFrames);
+                break;
+            default:
+                startFrame = NormalizeFrameBoundary(attackRange1StartFrame, totalFrames, 1);
+                endFrame = NormalizeFrameBoundary(attackRange1EndFrame, totalFrames, totalFrames);
+                break;
+        }
+
+        if (endFrame < startFrame)
+        {
+            endFrame = startFrame;
+        }
+    }
+
+    private static int NormalizeFrameBoundary(int configuredFrame, int totalFrames, int fallbackValue)
+    {
+        int frame = configuredFrame <= 0 ? fallbackValue : configuredFrame;
+        return Mathf.Clamp(frame, 1, totalFrames);
+    }
+
+    private Collider2D ResolveBodyCollider()
+    {
+        if (bodyCollider != null)
+        {
+            return bodyCollider;
+        }
+
+        Collider2D rootCollider = GetComponent<Collider2D>();
+        if (rootCollider != null && !rootCollider.isTrigger)
+        {
+            return rootCollider;
+        }
+
+        Collider2D[] colliders = GetComponentsInChildren<Collider2D>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider2D candidate = colliders[i];
+            if (candidate == null || candidate.isTrigger)
+            {
+                continue;
+            }
+
+            return candidate;
+        }
+
+        return rootCollider;
+    }
+
     private Animator FindBestAnimator()
     {
         Transform bossVisual = transform.Find("BossVisual");
@@ -565,9 +1372,117 @@ public class EnemyCombat : MonoBehaviour
 
     private void Die()
     {
+        if (deathSequenceStarted)
+        {
+            return;
+        }
+
+        deathSequenceStarted = true;
         InterruptAttack();
         isDead = true;
-        Destroy(gameObject);
+
+        if (rb != null)
+        {
+            rb.velocity = Vector2.zero;
+            rb.angularVelocity = 0f;
+        }
+
+        if (disableCollidersOnDeath)
+        {
+            ApplyDeathColliderPolicy();
+        }
+
+        if (freezeBossRigidbodyOnDeath && IsBossEntity())
+        {
+            FreezeRigidbodyForDeath();
+        }
+
+        PublishDeathEvent();
+        PlayDeath();
+
+        float destroyDelay = Mathf.Max(0f, deathDestroyDelay);
+        if (destroyDelay <= 0f)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        StartCoroutine(DestroyAfterDeathDelay(destroyDelay));
+    }
+
+    private void PublishDeathEvent()
+    {
+        if (IsBossEntity())
+        {
+            GameEvents.BossDeath();
+            return;
+        }
+
+        GameEvents.EnemyDeath(gameObject);
+    }
+
+    private void PlayDeath()
+    {
+        if (animator == null)
+        {
+            return;
+        }
+
+        if (hasDeathBoolParam && !string.IsNullOrEmpty(deathBoolName))
+        {
+            animator.SetBool(deathBoolName, true);
+        }
+
+        if (!string.IsNullOrEmpty(deathTriggerName))
+        {
+            TrySetTrigger(deathTriggerName, ref loggedMissingDeathTrigger, hasDeathTriggerParam);
+        }
+    }
+
+    private IEnumerator DestroyAfterDeathDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (this != null)
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    private void ApplyDeathColliderPolicy()
+    {
+        Collider2D[] colliders = GetComponentsInChildren<Collider2D>(true);
+        bool keepSolidColliders = keepBossSolidCollidersOnDeath && IsBossEntity();
+
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            Collider2D candidate = colliders[i];
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            bool keepThisCollider = keepSolidColliders && !candidate.isTrigger;
+            candidate.enabled = keepThisCollider;
+        }
+    }
+
+    private void FreezeRigidbodyForDeath()
+    {
+        if (rb == null)
+        {
+            return;
+        }
+
+        rb.velocity = Vector2.zero;
+        rb.angularVelocity = 0f;
+        rb.gravityScale = 0f;
+        rb.constraints = RigidbodyConstraints2D.FreezeAll;
+    }
+
+    private bool IsBossEntity()
+    {
+        return string.Equals(tag, "Boss", System.StringComparison.OrdinalIgnoreCase);
     }
 
     private void InterruptAttack()
@@ -581,6 +1496,8 @@ public class EnemyCombat : MonoBehaviour
         }
 
         isAttacking = false;
+        SetAllAttackHitboxesEnabled(false);
+        damagedPlayersThisAttack.Clear();
 
         if (hideAttackPointOutsideAttack)
         {
@@ -600,9 +1517,14 @@ public class EnemyCombat : MonoBehaviour
             return;
         }
 
-        Vector2 point = contactPoint != null ? contactPoint.position : transform.position;
+        if (requirePhysicalTouchForContactDamage && (bodyCollider == null || bodyCollider.isTrigger))
+        {
+            return;
+        }
+
+        Vector2 point = GetContactSamplePoint();
         int mask = playerLayer.value == 0 ? Physics2D.AllLayers : playerLayer.value;
-        Collider2D[] cols = Physics2D.OverlapCircleAll(point, EffectiveContactDamageRange, mask);
+        Collider2D[] cols = Physics2D.OverlapCircleAll(point, GetEffectiveContactQueryRange(), mask);
         for (int i = 0; i < cols.Length; i++)
         {
             PlayerCombat player = cols[i].GetComponentInParent<PlayerCombat>();
@@ -611,7 +1533,8 @@ public class EnemyCombat : MonoBehaviour
                 continue;
             }
 
-            if (requirePhysicalTouchForContactDamage && !IsTouchingPlayer(player))
+            bool mustTouch = requirePhysicalTouchForContactDamage;
+            if (mustTouch && !IsTouchingPlayer(player))
             {
                 continue;
             }
@@ -624,9 +1547,70 @@ public class EnemyCombat : MonoBehaviour
             );
 
             player.ReceiveAttack(data);
+            ApplyContactPushback(player);
             nextContactDamageAllowedTime = Time.time + Mathf.Max(0.1f, contactDamageCooldown);
             return;
         }
+    }
+
+    private void ApplyContactPushback(PlayerCombat player)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        Rigidbody2D playerRb = player.GetComponent<Rigidbody2D>();
+        if (playerRb == null)
+        {
+            return;
+        }
+
+        float pushDistance = Mathf.Max(0f, contactPushbackDistance);
+        if (pushDistance <= 0f)
+        {
+            return;
+        }
+
+        float enemyX = rb != null ? rb.position.x : transform.position.x;
+        float deltaX = playerRb.position.x - enemyX;
+        float dirX = Mathf.Abs(deltaX) > 0.01f ? Mathf.Sign(deltaX) : -facingDirection;
+        float pushSpeed = Mathf.Max(0f, contactPushbackSpeed);
+        if (pushSpeed > 0f)
+        {
+            playerRb.velocity = new Vector2(dirX * pushSpeed, playerRb.velocity.y);
+        }
+        Vector2 target = playerRb.position + new Vector2(dirX * pushDistance, 0f);
+        playerRb.MovePosition(target);
+    }
+
+    private Vector2 GetContactSamplePoint()
+    {
+        if (contactPoint != null)
+        {
+            return contactPoint.position;
+        }
+
+        if (bodyCollider != null)
+        {
+            return bodyCollider.bounds.center;
+        }
+
+        return transform.position;
+    }
+
+    private float GetEffectiveContactQueryRange()
+    {
+        float range = EffectiveContactDamageRange;
+        if (bodyCollider != null)
+        {
+            float factor = Mathf.Clamp(contactBodyRangeFactor, 0f, 1f);
+            float colliderRange = Mathf.Max(bodyCollider.bounds.extents.x, bodyCollider.bounds.extents.y) * factor;
+            range = Mathf.Max(range, colliderRange);
+        }
+
+        float maxRange = Mathf.Max(0.08f, maximumEffectiveContactDamageRange);
+        return Mathf.Clamp(range, 0.08f, maxRange);
     }
 
     private bool IsTouchingPlayer(PlayerCombat player)
@@ -679,6 +1663,11 @@ public class EnemyCombat : MonoBehaviour
             attackPointBaseLocalPosition = attackPoint.localPosition;
         }
 
+        if (attackPoint1 != null)
+        {
+            attackPoint1BaseLocalPosition = attackPoint1.localPosition;
+        }
+
         if (contactPoint != null)
         {
             contactPointBaseLocalPosition = contactPoint.localPosition;
@@ -696,6 +1685,13 @@ public class EnemyCombat : MonoBehaviour
             attackPoint.localPosition = p;
         }
 
+        if (attackPoint1 != null)
+        {
+            Vector3 p = attackPoint1BaseLocalPosition;
+            p.x = Mathf.Abs(p.x) * facingDirection;
+            attackPoint1.localPosition = p;
+        }
+
         if (contactPoint != null)
         {
             Vector3 p = contactPointBaseLocalPosition;
@@ -706,18 +1702,23 @@ public class EnemyCombat : MonoBehaviour
 
     private void SetAttackPointVisible(bool visible)
     {
-        if (attackPoint == null)
+        SetAttackRootVisible(attackPoint, visible);
+        SetAttackRootVisible(attackPoint1, visible);
+    }
+
+    private static void SetAttackRootVisible(Transform attackRoot, bool visible)
+    {
+        if (attackRoot == null)
         {
             return;
         }
 
-        if (attackPointVisible == visible)
+        if (attackRoot.gameObject.activeSelf == visible)
         {
             return;
         }
 
-        attackPointVisible = visible;
-        attackPoint.gameObject.SetActive(visible);
+        attackRoot.gameObject.SetActive(visible);
     }
 
     private void OnDrawGizmosSelected()
@@ -733,12 +1734,12 @@ public class EnemyCombat : MonoBehaviour
         if (contactPoint != null)
         {
             Gizmos.color = new Color(1f, 0.55f, 0f, 1f);
-            Gizmos.DrawWireSphere(contactPoint.position, EffectiveContactDamageRange);
+            Gizmos.DrawWireSphere(GetContactSamplePoint(), GetEffectiveContactQueryRange());
         }
         else
         {
             Gizmos.color = new Color(1f, 0.55f, 0f, 1f);
-            Gizmos.DrawWireSphere(transform.position, EffectiveContactDamageRange);
+            Gizmos.DrawWireSphere(GetContactSamplePoint(), GetEffectiveContactQueryRange());
         }
 
         if (playerTarget != null)
@@ -748,3 +1749,4 @@ public class EnemyCombat : MonoBehaviour
         }
     }
 }
+

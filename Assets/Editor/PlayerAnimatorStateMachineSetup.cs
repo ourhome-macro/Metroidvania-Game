@@ -1,133 +1,244 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 public static class PlayerAnimatorStateMachineSetup
 {
-    private const string ControllerPath = "Assets/Player/prefabs-player/running(896x128).controller";
-    private const string ClipsFolder = "Assets/Player/prefabs-player";
-    private const string SessionKey = "PlayerAnimatorStateMachineSetup.Done";
+    private const string StateParameterName = "playerState";
+    private const string GeneratedControllerPath = "Assets/Generated/Player/PlayerStateMachine.controller";
 
-    [InitializeOnLoadMethod]
-    private static void AutoSetupOncePerSession()
+    private static readonly string[] SearchClipFolders =
     {
-        if (SessionState.GetBool(SessionKey, false))
-        {
-            return;
-        }
+        "Assets/Player/prefabs-player",
+        "Assets/Player",
+        "Assets"
+    };
 
-        EditorApplication.delayCall += () =>
-        {
-            try
-            {
-                SetupStateMachine();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[AnimatorSetup] Auto setup failed: {ex.Message}");
-            }
-            finally
-            {
-                SessionState.SetBool(SessionKey, true);
-            }
-        };
+    private enum PlayerAnimState
+    {
+        Idle = 0,
+        Run = 1,
+        Jump = 2,
+        Fall = 3,
+        Defend = 4,
+        Attack = 5,
+        Skip = 6,
+        Hit = 7,
+        Dead = 8
     }
 
     [MenuItem("Tools/Animation/Setup Player Animator State Machine")]
     public static void SetupStateMachine()
     {
-        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        Animator animator = ResolvePlayerAnimator();
+        if (animator == null)
+        {
+            Debug.LogError("[AnimatorSetup] Cannot find player Animator. Select player object or tag it as 'Player'.");
+            return;
+        }
+
+        AnimatorController controller = ResolveOrCreateController(animator);
         if (controller == null)
         {
-            Debug.LogError($"[AnimatorSetup] Controller not found: {ControllerPath}");
+            Debug.LogError("[AnimatorSetup] Failed to resolve or create AnimatorController.", animator);
             return;
         }
 
         Dictionary<string, AnimationClip> clips = LoadClips();
-        AnimationClip idle = GetClip(clips, "waepon idle") ?? GetAnyClip(clips);
-        AnimationClip run = GetClip(clips, "running") ?? idle;
-        AnimationClip jump = GetClip(clips, "jump") ?? idle;
-        AnimationClip defend = GetClip(clips, "defend") ?? idle;
-        AnimationClip attack = GetAttackClip(clips) ?? idle;
-        AnimationClip skip = GetClip(clips, "skip") ?? idle;
-        AnimationClip hit = GetHitClip(clips) ?? idle;
+        AnimationClip idle = FindClip(clips, "idle", "waepon idle");
+        if (idle == null)
+        {
+            idle = GetAnyClip(clips);
+        }
 
         if (idle == null)
         {
-            Debug.LogError("[AnimatorSetup] No animation clips found in prefabs-player folder.");
+            Debug.LogError("[AnimatorSetup] No AnimationClip found in project.", animator);
             return;
         }
 
-        ClearParameters(controller);
-        AddParameters(controller);
+        AnimationClip run = FindClip(clips, "run", "running") ?? idle;
+        AnimationClip jump = FindClip(clips, "jump_up", "jump") ?? idle;
+        AnimationClip fall = FindClip(clips, "fall", "jump_down", "drop") ?? jump;
+        AnimationClip defend = FindClip(clips, "defend", "block") ?? idle;
+        AnimationClip attack = FindClipExcluding(clips, new[] { "attack", "atk" }, "be_atk", "hit", "hurt") ?? idle;
+        AnimationClip skip = FindClip(clips, "skip", "dodge", "roll") ?? idle;
+        AnimationClip hit = FindClip(clips, "be_atk", "be_atked", "hit", "hurt") ?? idle;
+        AnimationClip dead = FindClip(clips, "dead", "die") ?? hit;
 
-        AnimatorStateMachine sm = controller.layers[0].stateMachine;
-        ClearStateMachine(sm);
+        EnsureParameters(controller);
+        AnimatorStateMachine stateMachine = controller.layers[0].stateMachine;
+        ClearStateMachine(stateMachine);
 
-        AnimatorState idleState = sm.AddState("Idle", new Vector3(250, 200, 0));
-        AnimatorState runState = sm.AddState("Run", new Vector3(520, 200, 0));
-        AnimatorState jumpState = sm.AddState("Jump", new Vector3(380, 40, 0));
-        AnimatorState defendState = sm.AddState("Defend", new Vector3(250, 360, 0));
-        AnimatorState attackState = sm.AddState("Attack", new Vector3(700, 80, 0));
-        AnimatorState skipState = sm.AddState("Skip", new Vector3(700, 200, 0));
-        AnimatorState hitState = sm.AddState("Hit", new Vector3(700, 320, 0));
+        Dictionary<PlayerAnimState, AnimatorState> states = new Dictionary<PlayerAnimState, AnimatorState>
+        {
+            { PlayerAnimState.Idle, AddState(stateMachine, "Idle", idle, new Vector3(250, 200, 0)) },
+            { PlayerAnimState.Run, AddState(stateMachine, "Run", run, new Vector3(460, 200, 0)) },
+            { PlayerAnimState.Jump, AddState(stateMachine, "Jump", jump, new Vector3(350, 60, 0)) },
+            { PlayerAnimState.Fall, AddState(stateMachine, "Fall", fall, new Vector3(350, 340, 0)) },
+            { PlayerAnimState.Defend, AddState(stateMachine, "Defend", defend, new Vector3(250, 430, 0)) },
+            { PlayerAnimState.Attack, AddState(stateMachine, "Attack", attack, new Vector3(680, 70, 0)) },
+            { PlayerAnimState.Skip, AddState(stateMachine, "Skip", skip, new Vector3(680, 200, 0)) },
+            { PlayerAnimState.Hit, AddState(stateMachine, "Hit", hit, new Vector3(680, 330, 0)) },
+            { PlayerAnimState.Dead, AddState(stateMachine, "Dead", dead, new Vector3(680, 460, 0)) }
+        };
 
-        idleState.motion = idle;
-        runState.motion = run;
-        jumpState.motion = jump;
-        defendState.motion = defend;
-        attackState.motion = attack;
-        skipState.motion = skip;
-        hitState.motion = hit;
+        stateMachine.defaultState = states[PlayerAnimState.Idle];
 
-        sm.defaultState = idleState;
+        foreach (KeyValuePair<PlayerAnimState, AnimatorState> from in states)
+        {
+            foreach (KeyValuePair<PlayerAnimState, AnimatorState> to in states)
+            {
+                if (from.Key == to.Key)
+                {
+                    continue;
+                }
 
-        AddBoolTransition(idleState, runState, "isRunning", true, false, 0.05f);
-        AddBoolTransition(runState, idleState, "isRunning", false, false, 0.05f);
+                AddStateEqualsTransition(from.Value, to.Value, (int)to.Key);
+            }
+        }
 
-        AddBoolTransition(idleState, jumpState, "isJumping", true, false, 0.02f);
-        AddBoolTransition(runState, jumpState, "isJumping", true, false, 0.02f);
-        AddBoolTransition(jumpState, runState, "isJumping", false, false, 0.02f, "isRunning", true);
-        AddBoolTransition(jumpState, idleState, "isJumping", false, false, 0.02f, "isRunning", false);
-
-        AddBoolTransition(idleState, defendState, "isDefending", true, false, 0.02f);
-        AddBoolTransition(runState, defendState, "isDefending", true, false, 0.02f);
-        AddBoolTransition(jumpState, defendState, "isDefending", true, false, 0.02f);
-        AddBoolTransition(defendState, idleState, "isDefending", false, false, 0.02f);
-
-        AddAnyStateTriggerTransition(sm, attackState, "Attack");
-        AddAnyStateTriggerTransition(sm, skipState, "isSkipping");
-        AddAnyStateTriggerTransition(sm, hitState, "isHit");
-
-        AddExitToLocomotion(attackState, idleState, 0.95f);
-        AddExitToLocomotion(skipState, idleState, 0.95f);
-        AddExitToLocomotion(hitState, idleState, 0.95f);
+        EditorUtility.SetDirty(controller);
+        EditorUtility.SetDirty(animator);
+        if (animator.gameObject.scene.IsValid())
+        {
+            EditorSceneManager.MarkSceneDirty(animator.gameObject.scene);
+        }
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("[AnimatorSetup] Player animator state machine configured.");
+        Debug.Log($"[AnimatorSetup] Rebuilt player state machine on controller '{controller.name}'.", animator);
     }
 
-    private static Dictionary<string, AnimationClip> LoadClips()
+    [MenuItem("Tools/Animation/Repair Player Animator Graph")]
+    public static void RepairAnimatorGraph()
     {
-        string[] guids = AssetDatabase.FindAssets("t:AnimationClip", new[] { ClipsFolder });
-        Dictionary<string, AnimationClip> clips = new Dictionary<string, AnimationClip>(StringComparer.OrdinalIgnoreCase);
+        SetupStateMachine();
+    }
 
-        foreach (string guid in guids)
+    private static Animator ResolvePlayerAnimator()
+    {
+        if (Selection.activeGameObject != null)
         {
-            string path = AssetDatabase.GUIDToAssetPath(guid);
-            AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
-            if (clip == null)
+            Animator selectedAnimator = Selection.activeGameObject.GetComponentInParent<Animator>();
+            if (selectedAnimator != null)
+            {
+                return selectedAnimator;
+            }
+        }
+
+        GameObject tagged = null;
+        try
+        {
+            tagged = GameObject.FindGameObjectWithTag("Player");
+        }
+        catch
+        {
+            tagged = null;
+        }
+
+        if (tagged != null)
+        {
+            Animator taggedAnimator = tagged.GetComponent<Animator>();
+            if (taggedAnimator != null)
+            {
+                return taggedAnimator;
+            }
+
+            taggedAnimator = tagged.GetComponentInChildren<Animator>(true);
+            if (taggedAnimator != null)
+            {
+                return taggedAnimator;
+            }
+        }
+
+        Animator[] allAnimators = UnityEngine.Object.FindObjectsOfType<Animator>(true);
+        for (int i = 0; i < allAnimators.Length; i++)
+        {
+            if (allAnimators[i] == null)
             {
                 continue;
             }
 
-            if (!clips.ContainsKey(clip.name))
+            if (allAnimators[i].GetComponent<PlayerController2D>() != null || allAnimators[i].GetComponentInParent<PlayerController2D>() != null)
             {
-                clips.Add(clip.name, clip);
+                return allAnimators[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static AnimatorController ResolveOrCreateController(Animator animator)
+    {
+        AnimatorController controller = ResolveAnimatorController(animator.runtimeAnimatorController);
+        if (controller != null)
+        {
+            return controller;
+        }
+
+        EnsureFolderForAsset(GeneratedControllerPath);
+        controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(GeneratedControllerPath);
+        if (controller == null)
+        {
+            controller = AnimatorController.CreateAnimatorControllerAtPath(GeneratedControllerPath);
+        }
+
+        animator.runtimeAnimatorController = controller;
+        return controller;
+    }
+
+    private static AnimatorController ResolveAnimatorController(RuntimeAnimatorController runtimeController)
+    {
+        if (runtimeController == null)
+        {
+            return null;
+        }
+
+        AnimatorController direct = runtimeController as AnimatorController;
+        if (direct != null)
+        {
+            return direct;
+        }
+
+        AnimatorOverrideController overrideController = runtimeController as AnimatorOverrideController;
+        if (overrideController != null)
+        {
+            return overrideController.runtimeAnimatorController as AnimatorController;
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, AnimationClip> LoadClips()
+    {
+        Dictionary<string, AnimationClip> clips = new Dictionary<string, AnimationClip>(StringComparer.OrdinalIgnoreCase);
+
+        for (int f = 0; f < SearchClipFolders.Length; f++)
+        {
+            string folder = SearchClipFolders[f];
+            string[] guids = AssetDatabase.FindAssets("t:AnimationClip", new[] { folder });
+            for (int i = 0; i < guids.Length; i++)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+                if (clip == null)
+                {
+                    continue;
+                }
+
+                if (!clips.ContainsKey(clip.name))
+                {
+                    clips.Add(clip.name, clip);
+                }
+            }
+
+            if (clips.Count > 0)
+            {
+                break;
             }
         }
 
@@ -136,44 +247,21 @@ public static class PlayerAnimatorStateMachineSetup
 
     private static AnimationClip GetAnyClip(Dictionary<string, AnimationClip> clips)
     {
-        return clips.Values.FirstOrDefault();
-    }
-
-    private static AnimationClip GetClip(Dictionary<string, AnimationClip> clips, string contains)
-    {
         foreach (KeyValuePair<string, AnimationClip> kv in clips)
         {
-            if (kv.Key.IndexOf(contains, StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                return kv.Value;
-            }
+            return kv.Value;
         }
 
         return null;
     }
 
-    private static AnimationClip GetAttackClip(Dictionary<string, AnimationClip> clips)
+    private static AnimationClip FindClip(Dictionary<string, AnimationClip> clips, params string[] keys)
     {
-        string[] preferred =
-        {
-            "attack",
-            "attack-",
-            "attack_",
-            "attack (",
-            "atk"
-        };
-
-        foreach (string p in preferred)
+        foreach (string key in keys)
         {
             foreach (KeyValuePair<string, AnimationClip> kv in clips)
             {
-                string lower = kv.Key.ToLowerInvariant();
-                if (lower.Contains("be_atk") || lower.Contains("hit") || lower.Contains("hurt"))
-                {
-                    continue;
-                }
-
-                if (lower.Contains(p))
+                if (kv.Key.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     return kv.Value;
                 }
@@ -183,110 +271,141 @@ public static class PlayerAnimatorStateMachineSetup
         return null;
     }
 
-    private static AnimationClip GetHitClip(Dictionary<string, AnimationClip> clips)
+    private static AnimationClip FindClipExcluding(Dictionary<string, AnimationClip> clips, string[] includeKeys, params string[] excludes)
     {
-        string[] preferred =
+        for (int i = 0; i < includeKeys.Length; i++)
         {
-            "be_atked",
-            "be_atk",
-            "hit",
-            "hurt"
-        };
-
-        foreach (string p in preferred)
-        {
-            AnimationClip clip = GetClip(clips, p);
-            if (clip != null)
+            string include = includeKeys[i];
+            foreach (KeyValuePair<string, AnimationClip> kv in clips)
             {
-                return clip;
+                string lower = kv.Key.ToLowerInvariant();
+                if (!lower.Contains(include))
+                {
+                    continue;
+                }
+
+                bool rejected = false;
+                for (int e = 0; e < excludes.Length; e++)
+                {
+                    if (lower.Contains(excludes[e]))
+                    {
+                        rejected = true;
+                        break;
+                    }
+                }
+
+                if (!rejected)
+                {
+                    return kv.Value;
+                }
             }
         }
 
         return null;
     }
 
-    private static void ClearParameters(AnimatorController controller)
+    private static void EnsureParameters(AnimatorController controller)
     {
-        AnimatorControllerParameter[] ps = controller.parameters;
-        for (int i = ps.Length - 1; i >= 0; i--)
-        {
-            controller.RemoveParameter(ps[i]);
-        }
+        EnsureParameter(controller, StateParameterName, AnimatorControllerParameterType.Int);
+
+        EnsureParameter(controller, "isRunning", AnimatorControllerParameterType.Bool);
+        EnsureParameter(controller, "isJumping", AnimatorControllerParameterType.Bool);
+        EnsureParameter(controller, "isDefending", AnimatorControllerParameterType.Bool);
+        EnsureParameter(controller, "Attack", AnimatorControllerParameterType.Trigger);
+        EnsureParameter(controller, "isSkipping", AnimatorControllerParameterType.Trigger);
+        EnsureParameter(controller, "isHit", AnimatorControllerParameterType.Trigger);
     }
 
-    private static void AddParameters(AnimatorController controller)
+    private static void EnsureParameter(AnimatorController controller, string name, AnimatorControllerParameterType type)
     {
-        controller.AddParameter("isRunning", AnimatorControllerParameterType.Bool);
-        controller.AddParameter("isJumping", AnimatorControllerParameterType.Bool);
-        controller.AddParameter("isDefending", AnimatorControllerParameterType.Bool);
-        controller.AddParameter("Attack", AnimatorControllerParameterType.Trigger);
-        controller.AddParameter("isSkipping", AnimatorControllerParameterType.Trigger);
-        controller.AddParameter("isHit", AnimatorControllerParameterType.Trigger);
-    }
-
-    private static void ClearStateMachine(AnimatorStateMachine sm)
-    {
-        ChildAnimatorState[] states = sm.states;
-        for (int i = states.Length - 1; i >= 0; i--)
+        AnimatorControllerParameter[] parameters = controller.parameters;
+        for (int i = 0; i < parameters.Length; i++)
         {
-            sm.RemoveState(states[i].state);
+            if (parameters[i].name == name && parameters[i].type == type)
+            {
+                return;
+            }
         }
 
-        AnimatorStateTransition[] anyTransitions = sm.anyStateTransitions;
+        controller.AddParameter(name, type);
+    }
+
+    private static void ClearStateMachine(AnimatorStateMachine stateMachine)
+    {
+        AnimatorStateTransition[] anyTransitions = stateMachine.anyStateTransitions;
         for (int i = anyTransitions.Length - 1; i >= 0; i--)
         {
-            sm.RemoveAnyStateTransition(anyTransitions[i]);
+            stateMachine.RemoveAnyStateTransition(anyTransitions[i]);
         }
 
-        AnimatorTransition[] entryTransitions = sm.entryTransitions;
+        AnimatorTransition[] entryTransitions = stateMachine.entryTransitions;
         for (int i = entryTransitions.Length - 1; i >= 0; i--)
         {
-            sm.RemoveEntryTransition(entryTransitions[i]);
+            stateMachine.RemoveEntryTransition(entryTransitions[i]);
         }
-    }
 
-    private static void AddBoolTransition(
-        AnimatorState from,
-        AnimatorState to,
-        string conditionName,
-        bool value,
-        bool hasExitTime,
-        float duration,
-        string secondConditionName = null,
-        bool secondValue = false)
-    {
-        AnimatorStateTransition t = from.AddTransition(to);
-        t.hasExitTime = hasExitTime;
-        t.duration = duration;
-        t.hasFixedDuration = true;
-        t.exitTime = 0f;
-        t.interruptionSource = TransitionInterruptionSource.None;
-        t.AddCondition(value ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, conditionName);
-
-        if (!string.IsNullOrEmpty(secondConditionName))
+        ChildAnimatorStateMachine[] childStateMachines = stateMachine.stateMachines;
+        for (int i = childStateMachines.Length - 1; i >= 0; i--)
         {
-            t.AddCondition(secondValue ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, secondConditionName);
+            stateMachine.RemoveStateMachine(childStateMachines[i].stateMachine);
+        }
+
+        ChildAnimatorState[] states = stateMachine.states;
+        for (int i = states.Length - 1; i >= 0; i--)
+        {
+            stateMachine.RemoveState(states[i].state);
         }
     }
 
-    private static void AddAnyStateTriggerTransition(AnimatorStateMachine sm, AnimatorState to, string triggerName)
+    private static AnimatorState AddState(AnimatorStateMachine stateMachine, string name, Motion motion, Vector3 pos)
     {
-        AnimatorStateTransition t = sm.AddAnyStateTransition(to);
-        t.hasExitTime = false;
-        t.hasFixedDuration = true;
-        t.duration = 0.03f;
-        t.exitTime = 0f;
-        t.interruptionSource = TransitionInterruptionSource.None;
-        t.AddCondition(AnimatorConditionMode.If, 0f, triggerName);
+        AnimatorState state = stateMachine.AddState(name, pos);
+        state.motion = motion;
+        return state;
     }
 
-    private static void AddExitToLocomotion(AnimatorState from, AnimatorState idleState, float exitTime)
+    private static void AddStateEqualsTransition(AnimatorState from, AnimatorState to, int stateValue)
     {
-        AnimatorStateTransition t = from.AddTransition(idleState);
-        t.hasExitTime = true;
-        t.exitTime = exitTime;
-        t.hasFixedDuration = true;
-        t.duration = 0.03f;
-        t.interruptionSource = TransitionInterruptionSource.None;
+        AnimatorStateTransition transition = from.AddTransition(to);
+        transition.hasExitTime = false;
+        transition.hasFixedDuration = true;
+        transition.duration = 0.05f;
+        transition.exitTime = 0f;
+        transition.interruptionSource = TransitionInterruptionSource.None;
+        transition.AddCondition(AnimatorConditionMode.Equals, stateValue, StateParameterName);
+    }
+
+    private static void EnsureFolderForAsset(string assetPath)
+    {
+        int slash = assetPath.LastIndexOf('/');
+        if (slash <= 0)
+        {
+            return;
+        }
+
+        string folder = assetPath.Substring(0, slash);
+        EnsureFolder(folder);
+    }
+
+    private static void EnsureFolder(string folderPath)
+    {
+        if (string.IsNullOrEmpty(folderPath) || AssetDatabase.IsValidFolder(folderPath))
+        {
+            return;
+        }
+
+        int slash = folderPath.LastIndexOf('/');
+        if (slash <= 0)
+        {
+            return;
+        }
+
+        string parent = folderPath.Substring(0, slash);
+        string leaf = folderPath.Substring(slash + 1);
+        EnsureFolder(parent);
+        if (!AssetDatabase.IsValidFolder(folderPath))
+        {
+            AssetDatabase.CreateFolder(parent, leaf);
+        }
     }
 }
