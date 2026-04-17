@@ -8,10 +8,10 @@ Folders:
 - `Tools/GenerateJianmuMenuArt.ps1`: reproducible menu-art generator
 
 Visual direction:
-- Ancient bark-like Chinese title lettering for `建木行者`
+- Kai-style Chinese title lettering for `建木行者`, then weathered into bark and cracks
 - Dark brown / gray wasteland palette
 - Cyan and magenta neon glow leaking through wood cracks
-- Ink-wash haze layered into pixel-art silhouettes
+- Ink-wash haze layered into pixel-art silhouettes, with drifting ink wisps in runtime UI
 
 Runtime behavior:
 - The opening screen appears once per play session when a scene contains `PlayerHealth`

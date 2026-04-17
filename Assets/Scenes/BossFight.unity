@@ -1712,7 +1712,7 @@ Animator:
   m_GameObject: {fileID: 1313893031}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 226d791eb16204f4fa603932cee94b77, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -1895,14 +1895,15 @@ MonoBehaviour:
   hitStunDuration: 0.2
   postHitInvincibleTime: 0.15
   defendDamageMultiplier: 0.3
-  perfectParryWindow: 0.4
+  perfectParryWindow: 0.18
+  perfectParryInvincibleTime: 0.08
   defendMoveMultiplier: 0.35
   skipInvincibleTime: 0.6
   skipDuration: 0.18
   skipSpeed: 12
   skipCooldown: 1
   playerController: {fileID: 1313893044}
-  playerHealth: {fileID: 0}
+  playerHealth: {fileID: 1313893047}
   logDefenseResult: 1
 --- !u!114 &1313893044
 MonoBehaviour:
@@ -1916,11 +1917,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 99f5de22d8257c9428fae4f63bb20478, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  playerConfig: {fileID: 0}
+  playerConfig: {fileID: 11400000, guid: 70fc4735b92dd0b478adb6db2c54a02b, type: 2}
   moveSpeed: 6
   acceleration: 50
   deceleration: 60
+  airAcceleration: 50
   jumpForce: 14
+  coyoteTime: 0.1
+  jumpBufferTime: 0.1
+  fallMultiplier: 2.2
+  lowJumpMultiplier: 3
+  maxFallSpeed: 24
   groundCheck: {fileID: 240764004}
   groundCheckRadius: 0.12
   groundLayer:
@@ -1997,9 +2004,11 @@ MonoBehaviour:
   dodgeKey: 32
   driveWindowFromDashEvent: 1
   perfectWindowSeconds: 0.2
-  freezeDurationSeconds: 0.5
-  visualRecoverSeconds: 0.3
+  freezeDurationSeconds: 0.04
+  perfectParryFreezeDurationSeconds: 0.06
+  visualRecoverSeconds: 0.18
   freezeVolumeWeight: 1
+  perfectParryVolumeWeight: 1
 --- !u!114 &1313893047
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2032,7 +2041,7 @@ MonoBehaviour:
   jumpUpSpeedThreshold: 0.05
   syncAnimatorIntParameter: 1
   animatorIntParameterName: playerState
-  logStateChange: 1
+  logStateChange: 0
   currentState: 0
 --- !u!1 &1354774819
 GameObject:

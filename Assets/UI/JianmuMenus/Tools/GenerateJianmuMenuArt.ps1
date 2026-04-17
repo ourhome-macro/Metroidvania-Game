@@ -127,14 +127,15 @@ function Build-TextPath {
         [float]$FontSize,
         [int]$CanvasWidth,
         [int]$CanvasHeight,
-        [bool]$Compact
+        [bool]$Compact,
+        [System.Drawing.FontStyle]$FontStyle = [System.Drawing.FontStyle]::Regular
     )
 
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
     $format = New-Object System.Drawing.StringFormat
     $format.Alignment = [System.Drawing.StringAlignment]::Center
     $format.LineAlignment = [System.Drawing.StringAlignment]::Center
-    $path.AddString($Text, $FontFamily, [int][System.Drawing.FontStyle]::Bold, $FontSize, (New-Object System.Drawing.PointF(0, 0)), $format)
+    $path.AddString($Text, $FontFamily, [int]$FontStyle, $FontSize, (New-Object System.Drawing.PointF(0, 0)), $format)
 
     $bounds = $path.GetBounds()
     $targetWidth = if ($Compact) { $CanvasWidth * 0.78 } else { $CanvasWidth * 0.84 }
@@ -164,7 +165,8 @@ function Write-BarkText {
         [float]$FontSize,
         [System.Random]$Random,
         [System.Drawing.FontFamily]$FontFamily,
-        [bool]$Compact = $false
+        [bool]$Compact = $false,
+        [System.Drawing.FontStyle]$FontStyle = [System.Drawing.FontStyle]::Regular
     )
 
     $scale = 4
@@ -184,7 +186,7 @@ function Write-BarkText {
         Draw-InkWisp -Graphics $graphics -Random $Random -Width $hiWidth -Height $hiHeight -Color $inkColor -PenWidth ($scale * (5 + $Random.Next(0, 8)))
     }
 
-    $path = Build-TextPath -Text $Text -FontFamily $FontFamily -FontSize ($FontSize * $scale) -CanvasWidth $hiWidth -CanvasHeight $hiHeight -Compact $Compact
+    $path = Build-TextPath -Text $Text -FontFamily $FontFamily -FontSize ($FontSize * $scale) -CanvasWidth $hiWidth -CanvasHeight $hiHeight -Compact $Compact -FontStyle $FontStyle
 
     $glowBrushA = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(52, 0, 255, 224))
     $glowBrushB = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(40, 255, 0, 174))
@@ -376,6 +378,11 @@ function Write-Backdrop {
 
 $random = New-Object System.Random 24681357
 $fontFamily = Get-FontFamily -Candidates @(
+    "楷体",
+    "KaiTi",
+    "KaiTi_GB2312",
+    "STKaiti",
+    "Kaiti SC",
     "Microsoft YaHei UI",
     "Microsoft YaHei",
     "SimHei",
@@ -388,10 +395,10 @@ $startText = ([string][char]0x5F00) + ([string][char]0x59CB) + ([string][char]0x
 $continueText = ([string][char]0x7EE7) + ([string][char]0x7EED) + ([string][char]0x6E38) + ([string][char]0x620F)
 $quitText = ([string][char]0x9000) + ([string][char]0x51FA) + ([string][char]0x6E38) + ([string][char]0x620F)
 
-Write-BarkText -Text $titleText -OutFile "JianmuTitleLogo.png" -OutWidth 512 -OutHeight 192 -FontSize 200 -Random $random -FontFamily $fontFamily
-Write-BarkText -Text $startText -OutFile "StartGameLabel.png" -OutWidth 256 -OutHeight 72 -FontSize 108 -Random $random -FontFamily $fontFamily -Compact $true
-Write-BarkText -Text $continueText -OutFile "ContinueGameLabel.png" -OutWidth 256 -OutHeight 72 -FontSize 108 -Random $random -FontFamily $fontFamily -Compact $true
-Write-BarkText -Text $quitText -OutFile "QuitGameLabel.png" -OutWidth 256 -OutHeight 72 -FontSize 108 -Random $random -FontFamily $fontFamily -Compact $true
+Write-BarkText -Text $titleText -OutFile "JianmuTitleLogo.png" -OutWidth 512 -OutHeight 192 -FontSize 208 -Random $random -FontFamily $fontFamily -FontStyle ([System.Drawing.FontStyle]::Regular)
+Write-BarkText -Text $startText -OutFile "StartGameLabel.png" -OutWidth 256 -OutHeight 72 -FontSize 112 -Random $random -FontFamily $fontFamily -Compact $true -FontStyle ([System.Drawing.FontStyle]::Regular)
+Write-BarkText -Text $continueText -OutFile "ContinueGameLabel.png" -OutWidth 256 -OutHeight 72 -FontSize 112 -Random $random -FontFamily $fontFamily -Compact $true -FontStyle ([System.Drawing.FontStyle]::Regular)
+Write-BarkText -Text $quitText -OutFile "QuitGameLabel.png" -OutWidth 256 -OutHeight 72 -FontSize 112 -Random $random -FontFamily $fontFamily -Compact $true -FontStyle ([System.Drawing.FontStyle]::Regular)
 Write-Backdrop -OutFile "JianmuOpeningBackdrop.png" -Random $random
 
 Write-Host "Generated art files in $outputDir"

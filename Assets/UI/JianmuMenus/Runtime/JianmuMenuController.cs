@@ -12,6 +12,20 @@ using UnityEditor;
 [DefaultExecutionOrder(1100)]
 public sealed class JianmuMenuController : MonoBehaviour
 {
+    private sealed class InkWisp
+    {
+        public RectTransform Rect;
+        public Image Image;
+        public Vector2 AnchorPosition;
+        public float DriftX;
+        public float DriftY;
+        public float Speed;
+        public float Phase;
+        public float RotationAmplitude;
+        public float Scale;
+        public float Alpha;
+    }
+
     private enum MenuMode
     {
         None,
@@ -23,6 +37,8 @@ public sealed class JianmuMenuController : MonoBehaviour
     private static bool openingShownThisSession;
 
     private readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
+    private readonly List<InkWisp> openingWisps = new List<InkWisp>();
+    private readonly List<InkWisp> pauseWisps = new List<InkWisp>();
 
     private Canvas canvas;
     private Image openingLogoImage;
@@ -133,11 +149,11 @@ public sealed class JianmuMenuController : MonoBehaviour
         pauseRoot = CreateRoot("PauseRoot");
         pauseRoot.SetActive(false);
 
-        BuildOpeningScreen(openingRoot.transform);
+        BuildOpeningScreen(openingRoot.transform, art);
         BuildPauseScreen(pauseRoot.transform, art);
     }
 
-    private void BuildOpeningScreen(Transform parent)
+    private void BuildOpeningScreen(Transform parent, JianmuMenuArtFactory.SpriteSet art)
     {
         Image backdrop = CreateImage("Backdrop", parent, LoadSprite("Generated/JianmuOpeningBackdrop"));
         StretchFull(backdrop.rectTransform);
@@ -153,6 +169,10 @@ public sealed class JianmuMenuController : MonoBehaviour
         openingLogoImage.rectTransform.sizeDelta = new Vector2(420f, 156f);
         openingLogoImage.rectTransform.anchoredPosition = new Vector2(0f, -86f);
         openingLogoImage.color = new Color(1f, 1f, 1f, 0.96f);
+
+        RectTransform openingInkLayer = CreateLayerRect("OpeningInkLayer", parent);
+        openingInkLayer.SetSiblingIndex(2);
+        CreateInkWisps(openingInkLayer, openingWisps, art.InkBlot, 11, 0);
 
         startButton = CreateMenuButton(
             "StartButton",
@@ -191,6 +211,10 @@ public sealed class JianmuMenuController : MonoBehaviour
         pauseLogoImage.rectTransform.sizeDelta = new Vector2(220f, 82f);
         pauseLogoImage.rectTransform.anchoredPosition = new Vector2(0f, -42f);
         pauseLogoImage.color = new Color(1f, 1f, 1f, 0.94f);
+
+        RectTransform pauseInkLayer = CreateLayerRect("PauseInkLayer", panel.transform);
+        pauseInkLayer.SetSiblingIndex(0);
+        CreateInkWisps(pauseInkLayer, pauseWisps, art.InkBlot, 7, 1);
 
         continueButton = CreateMenuButton(
             "ContinueButton",
@@ -353,6 +377,9 @@ public sealed class JianmuMenuController : MonoBehaviour
         {
             pauseLogoImage.rectTransform.localScale = Vector3.one * (0.99f + Mathf.Sin(Time.unscaledTime * 1.1f) * 0.012f);
         }
+
+        AnimateInkWisps(openingWisps);
+        AnimateInkWisps(pauseWisps);
     }
 
     private void EnsureEventSystem()
@@ -376,6 +403,16 @@ public sealed class JianmuMenuController : MonoBehaviour
         return root;
     }
 
+    private RectTransform CreateLayerRect(string name, Transform parent)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform));
+        go.layer = gameObject.layer;
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.SetParent(parent, false);
+        StretchFull(rect);
+        return rect;
+    }
+
     private static void StretchFull(RectTransform rect)
     {
         rect.anchorMin = Vector2.zero;
@@ -389,6 +426,88 @@ public sealed class JianmuMenuController : MonoBehaviour
         Image image = CreateImage(name, parent, null);
         image.color = color;
         return image;
+    }
+
+    private void CreateInkWisps(RectTransform layer, List<InkWisp> target, Sprite inkSprite, int count, int seedOffset)
+    {
+        if (inkSprite == null)
+        {
+            return;
+        }
+
+        System.Random random = new System.Random(16384 + seedOffset * 97);
+        Vector2 layerSize = new Vector2(640f, 360f);
+        bool pauseLayer = seedOffset > 0;
+        if (pauseLayer)
+        {
+            layerSize = new Vector2(300f, 186f);
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            Image image = CreateImage($"InkWisp_{seedOffset}_{i}", layer, inkSprite);
+            image.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            image.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            image.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            image.rectTransform.sizeDelta = new Vector2(36f + random.Next(0, 28), 28f + random.Next(0, 22));
+
+            float x = ((float)random.NextDouble() - 0.5f) * layerSize.x * (pauseLayer ? 0.78f : 0.92f);
+            float y = ((float)random.NextDouble() - 0.5f) * layerSize.y * (pauseLayer ? 0.7f : 0.82f);
+            image.rectTransform.anchoredPosition = new Vector2(x, y);
+
+            Color tint;
+            switch (i % 3)
+            {
+                case 0:
+                    tint = new Color(0.10f, 0.09f, 0.10f, 0.34f);
+                    break;
+                case 1:
+                    tint = new Color(0.12f, 0.11f, 0.12f, 0.26f);
+                    break;
+                default:
+                    tint = new Color(0.18f, 0.17f, 0.18f, 0.21f);
+                    break;
+            }
+
+            image.color = tint;
+
+            InkWisp wisp = new InkWisp
+            {
+                Rect = image.rectTransform,
+                Image = image,
+                AnchorPosition = image.rectTransform.anchoredPosition,
+                DriftX = 5f + (float)random.NextDouble() * (pauseLayer ? 12f : 18f),
+                DriftY = 8f + (float)random.NextDouble() * (pauseLayer ? 10f : 16f),
+                Speed = 0.35f + (float)random.NextDouble() * 0.7f,
+                Phase = (float)random.NextDouble() * Mathf.PI * 2f,
+                RotationAmplitude = 5f + (float)random.NextDouble() * 10f,
+                Scale = 0.85f + (float)random.NextDouble() * 0.75f,
+                Alpha = tint.a
+            };
+
+            image.rectTransform.localScale = Vector3.one * wisp.Scale;
+            target.Add(wisp);
+        }
+    }
+
+    private void AnimateInkWisps(List<InkWisp> wisps)
+    {
+        float time = Time.unscaledTime;
+        for (int i = 0; i < wisps.Count; i++)
+        {
+            InkWisp wisp = wisps[i];
+            float phase = wisp.Phase + time * wisp.Speed;
+            float sin = Mathf.Sin(phase);
+            float cos = Mathf.Cos(phase * 0.7f);
+
+            wisp.Rect.anchoredPosition = wisp.AnchorPosition + new Vector2(cos * wisp.DriftX, sin * wisp.DriftY);
+            wisp.Rect.localRotation = Quaternion.Euler(0f, 0f, sin * wisp.RotationAmplitude);
+            wisp.Rect.localScale = Vector3.one * (wisp.Scale * (0.92f + (cos * 0.08f)));
+
+            Color color = wisp.Image.color;
+            color.a = wisp.Alpha * (0.72f + ((sin + 1f) * 0.14f));
+            wisp.Image.color = color;
+        }
     }
 
     private Image CreateImage(string name, Transform parent, Sprite sprite)

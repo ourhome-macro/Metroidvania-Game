@@ -174,20 +174,18 @@ public static class PlayerAnimatorStateMachineSetup
 
     private static AnimatorController ResolveOrCreateController(Animator animator)
     {
-        AnimatorController controller = ResolveAnimatorController(animator.runtimeAnimatorController);
-        if (controller != null)
-        {
-            return controller;
-        }
-
         EnsureFolderForAsset(GeneratedControllerPath);
-        controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(GeneratedControllerPath);
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(GeneratedControllerPath);
         if (controller == null)
         {
             controller = AnimatorController.CreateAnimatorControllerAtPath(GeneratedControllerPath);
         }
 
-        animator.runtimeAnimatorController = controller;
+        if (animator.runtimeAnimatorController != controller)
+        {
+            animator.runtimeAnimatorController = controller;
+        }
+
         return controller;
     }
 

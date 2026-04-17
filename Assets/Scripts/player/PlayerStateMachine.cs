@@ -170,6 +170,11 @@ public class PlayerStateMachine : MonoBehaviour
             return;
         }
 
+        if (animator.runtimeAnimatorController == null)
+        {
+            return;
+        }
+
         AnimatorControllerParameter[] parameters = animator.parameters;
         for (int i = 0; i < parameters.Length; i++)
         {

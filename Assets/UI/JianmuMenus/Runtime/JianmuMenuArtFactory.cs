@@ -6,6 +6,7 @@ public static class JianmuMenuArtFactory
     {
         public Sprite PausePanel;
         public Sprite Button;
+        public Sprite InkBlot;
     }
 
     private static readonly Color32 Clear = new Color32(0, 0, 0, 0);
@@ -21,7 +22,8 @@ public static class JianmuMenuArtFactory
         cached = new SpriteSet
         {
             PausePanel = CreatePausePanelSprite(),
-            Button = CreateButtonSprite()
+            Button = CreateButtonSprite(),
+            InkBlot = CreateInkBlotSprite()
         };
 
         return cached;
@@ -92,10 +94,74 @@ public static class JianmuMenuArtFactory
         return FinalizeSprite(texture, "JianmuMenuButton");
     }
 
+    private static Sprite CreateInkBlotSprite()
+    {
+        Texture2D texture = CreateTexture(32, 24);
+        Color32 inkCore = new Color32(31, 24, 24, 210);
+        Color32 inkSoft = new Color32(64, 54, 55, 142);
+        Color32 neonCyan = new Color32(44, 234, 214, 70);
+        Color32 neonMagenta = new Color32(230, 62, 176, 58);
+
+        int[,] corePoints =
+        {
+            { 7, 11, 5 },
+            { 11, 7, 6 },
+            { 16, 10, 7 },
+            { 21, 8, 5 },
+            { 23, 14, 5 },
+            { 16, 16, 6 },
+            { 11, 15, 5 }
+        };
+
+        int[,] softPoints =
+        {
+            { 5, 10, 6 },
+            { 10, 5, 5 },
+            { 18, 6, 6 },
+            { 25, 11, 4 },
+            { 19, 18, 6 },
+            { 10, 18, 5 }
+        };
+
+        for (int i = 0; i < softPoints.GetLength(0); i++)
+        {
+            DrawBlob(texture, softPoints[i, 0], softPoints[i, 1], softPoints[i, 2], inkSoft);
+        }
+
+        for (int i = 0; i < corePoints.GetLength(0); i++)
+        {
+            DrawBlob(texture, corePoints[i, 0], corePoints[i, 1], corePoints[i, 2], inkCore);
+        }
+
+        DrawBlob(texture, 10, 6, 2, neonCyan);
+        DrawBlob(texture, 22, 15, 2, neonMagenta);
+        DrawLine(texture, 12, 3, 9, 0, inkSoft);
+        DrawLine(texture, 23, 18, 27, 22, inkSoft);
+
+        return FinalizeSprite(texture, "JianmuInkBlot");
+    }
+
     private static void DrawCorner(Texture2D texture, int x, int y, Color32 color)
     {
         DrawFilledRect(texture, x, y, 12, 4, color);
         DrawFilledRect(texture, x, y, 4, 12, color);
+    }
+
+    private static void DrawBlob(Texture2D texture, int centerX, int centerY, int radius, Color32 color)
+    {
+        int squared = radius * radius;
+        for (int y = -radius; y <= radius; y++)
+        {
+            for (int x = -radius; x <= radius; x++)
+            {
+                if ((x * x) + (y * y) > squared)
+                {
+                    continue;
+                }
+
+                SetPixel(texture, centerX + x, centerY + y, color);
+            }
+        }
     }
 
     private static Texture2D CreateTexture(int width, int height)

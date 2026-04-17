@@ -6,6 +6,12 @@ using UnityEngine;
 [RequireComponent(typeof(PlayerHealth))]
 public class PerfectDodgeSystem : MonoBehaviour
 {
+    private enum DefensiveResponseType
+    {
+        PerfectDodge,
+        PerfectParry
+    }
+
     // Volume setup (URP):
     // 1) Create a Global Volume and assign a profile.
     // 2) Add Color Adjustments override in that profile.
@@ -26,15 +32,17 @@ public class PerfectDodgeSystem : MonoBehaviour
 
     [Header("Timing")]
     [SerializeField] private float perfectWindowSeconds = 0.2f;
-    [SerializeField] private float freezeDurationSeconds = 0.5f;
-    [SerializeField] private float visualRecoverSeconds = 0.3f;
+    [SerializeField] private float freezeDurationSeconds = 0.04f;
+    [SerializeField] private float perfectParryFreezeDurationSeconds = 0.06f;
+    [SerializeField] private float visualRecoverSeconds = 0.18f;
 
     [Header("Volume Blend")]
     [SerializeField, Range(0f, 1f)] private float freezeVolumeWeight = 1f;
+    [SerializeField, Range(0f, 1f)] private float perfectParryVolumeWeight = 1f;
 
     private float lastDodgePressedUnscaledTime = float.NegativeInfinity;
-    private bool triggerLocked;
-    private Coroutine runningRoutine;
+    private bool perfectDodgeConsumed;
+    private Coroutine responseRoutine;
     private float cachedTimeScale = 1f;
     private float cachedFixedDeltaTime;
     private bool timeScaleOverridden;
@@ -66,6 +74,8 @@ public class PerfectDodgeSystem : MonoBehaviour
         {
             GameEvents.OnDashStart += HandleDashStart;
         }
+
+        GameEvents.OnPerfectParry += HandlePerfectParry;
     }
 
     private void OnDisable()
@@ -80,15 +90,17 @@ public class PerfectDodgeSystem : MonoBehaviour
             playerHealth.OnBeforeTakeDamage -= TryConsumeDamageByPerfectDodge;
         }
 
-        if (runningRoutine != null)
+        GameEvents.OnPerfectParry -= HandlePerfectParry;
+
+        if (responseRoutine != null)
         {
-            StopCoroutine(runningRoutine);
-            runningRoutine = null;
+            StopCoroutine(responseRoutine);
+            responseRoutine = null;
         }
 
         RestoreTimeScaleImmediately();
         SetVolumeWeight(baseVolumeWeight);
-        triggerLocked = false;
+        perfectDodgeConsumed = false;
     }
 
     private void Update()
@@ -107,11 +119,20 @@ public class PerfectDodgeSystem : MonoBehaviour
     private void HandleDashStart()
     {
         lastDodgePressedUnscaledTime = Time.unscaledTime;
+        perfectDodgeConsumed = false;
+    }
+
+    private void HandlePerfectParry()
+    {
+        TriggerDefensiveResponse(
+            DefensiveResponseType.PerfectParry,
+            perfectParryFreezeDurationSeconds,
+            perfectParryVolumeWeight);
     }
 
     private bool TryConsumeDamageByPerfectDodge(PlayerHealth.DamageRequest request)
     {
-        if (triggerLocked || !enabled || !gameObject.activeInHierarchy)
+        if (perfectDodgeConsumed || !enabled || !gameObject.activeInHierarchy)
         {
             return false;
         }
@@ -123,21 +144,30 @@ public class PerfectDodgeSystem : MonoBehaviour
             return false;
         }
 
-        triggerLocked = true;
+        perfectDodgeConsumed = true;
         lastDodgePressedUnscaledTime = float.NegativeInfinity;
-
-        if (runningRoutine != null)
-        {
-            StopCoroutine(runningRoutine);
-        }
-
-        runningRoutine = StartCoroutine(PerfectDodgeRoutine());
+        TriggerDefensiveResponse(
+            DefensiveResponseType.PerfectDodge,
+            freezeDurationSeconds,
+            freezeVolumeWeight);
         return true;
     }
 
-    private IEnumerator PerfectDodgeRoutine()
+    private void TriggerDefensiveResponse(DefensiveResponseType responseType, float freezeSeconds, float targetWeight)
     {
-        SetVolumeWeight(Mathf.Clamp01(freezeVolumeWeight));
+        if (responseRoutine != null)
+        {
+            StopCoroutine(responseRoutine);
+            responseRoutine = null;
+        }
+
+        RestoreTimeScaleImmediately();
+        responseRoutine = StartCoroutine(DefensiveResponseRoutine(responseType, freezeSeconds, targetWeight));
+    }
+
+    private IEnumerator DefensiveResponseRoutine(DefensiveResponseType responseType, float freezeSeconds, float targetWeight)
+    {
+        SetVolumeWeight(Mathf.Clamp01(targetWeight));
 
         cachedFixedDeltaTime = Time.fixedDeltaTime;
         cachedTimeScale = Time.timeScale;
@@ -145,7 +175,7 @@ public class PerfectDodgeSystem : MonoBehaviour
         Time.timeScale = 0f;
         Time.fixedDeltaTime = 0f;
 
-        float freezeEnd = Time.unscaledTime + Mathf.Max(0f, freezeDurationSeconds);
+        float freezeEnd = Time.unscaledTime + Mathf.Max(0f, freezeSeconds);
         while (Time.unscaledTime < freezeEnd)
         {
             yield return null;
@@ -170,8 +200,12 @@ public class PerfectDodgeSystem : MonoBehaviour
         }
 
         SetVolumeWeight(toWeight);
-        runningRoutine = null;
-        triggerLocked = false;
+        responseRoutine = null;
+
+        if (responseType == DefensiveResponseType.PerfectDodge)
+        {
+            perfectDodgeConsumed = false;
+        }
     }
 
     private void RestoreTimeScaleImmediately()

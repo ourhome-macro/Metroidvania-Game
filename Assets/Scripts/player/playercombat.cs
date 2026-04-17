@@ -27,7 +27,8 @@ public class PlayerCombat : MonoBehaviour
 
 	[Header("Defend / Parry")]
 	[SerializeField] private float defendDamageMultiplier = 0.3f; // 閸戝繋婵€70%
-	[SerializeField] private float perfectParryWindow = 0.65f;
+	[SerializeField] private float perfectParryWindow = 0.18f;
+	[SerializeField] private float perfectParryInvincibleTime = 0.08f;
 	[SerializeField] private float defendMoveMultiplier = 0.35f;
 
 	[Header("Skip (Dodge)")]
@@ -436,6 +437,7 @@ public class PlayerCombat : MonoBehaviour
 	private void PerfectParry(AttackData attackData)
 	{
 		GameEvents.PerfectParry();
+		invincibleUntil = Mathf.Max(invincibleUntil, Time.time + Mathf.Max(0f, perfectParryInvincibleTime));
 		// This parry takes no damage and reflects it back to the attacker.
 		if (logDefenseResult)
 		{

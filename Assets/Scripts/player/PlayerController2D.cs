@@ -10,9 +10,15 @@ public class PlayerController2D : MonoBehaviour
     [SerializeField] private float moveSpeed = 6f;
     [SerializeField] private float acceleration = 50f;
     [SerializeField] private float deceleration = 60f;
+    [SerializeField] private float airAcceleration = 40f;
 
     [Header("Jump")]
     [SerializeField] private float jumpForce = 14f;
+    [SerializeField] private float coyoteTime = 0.1f;
+    [SerializeField] private float jumpBufferTime = 0.1f;
+    [SerializeField] private float fallMultiplier = 2.2f;
+    [SerializeField] private float lowJumpMultiplier = 3f;
+    [SerializeField] private float maxFallSpeed = 24f;
     [SerializeField] private Transform groundCheck;
     [SerializeField] private float groundCheckRadius = 0.12f;
     [SerializeField] private LayerMask groundLayer;
@@ -25,9 +31,11 @@ public class PlayerController2D : MonoBehaviour
     private Collider2D bodyCollider;
 
     private float moveInput;
-    private bool jumpPressed;
     private bool isGrounded;
     private bool facingRight = true;
+    private bool jumpHeld;
+    private float coyoteTimer;
+    private float jumpBufferTimer;
 
     public bool IsGrounded => isGrounded;
     public int FacingDirection => facingRight ? 1 : -1;
@@ -53,28 +61,25 @@ public class PlayerController2D : MonoBehaviour
     private void Update()
     {
         moveInput = Input.GetAxisRaw("Horizontal");
-
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            jumpPressed = true;
-        }
+        bool jumpPressedThisFrame = Input.GetButtonDown("Jump") || Input.GetKeyDown(KeyCode.Space);
+        jumpHeld = Input.GetButton("Jump") || Input.GetKey(KeyCode.Space);
 
         isGrounded = IsOnGround();
+        UpdateJumpTimers(jumpPressedThisFrame);
 
         if (playerCombat != null && playerCombat.IsMovementLocked)
         {
             moveInput = 0f;
-            jumpPressed = false;
+            jumpBufferTimer = 0f;
         }
 
-        if (jumpPressed && isGrounded)
+        if (CanConsumeJump())
         {
             rb.velocity = new Vector2(rb.velocity.x, jumpForce);
-            jumpPressed = false;
+            jumpBufferTimer = 0f;
+            coyoteTimer = 0f;
             isGrounded = false;
         }
-
-        jumpPressed = false;
 
         UpdateFacing();
         UpdateAnimator();
@@ -82,17 +87,27 @@ public class PlayerController2D : MonoBehaviour
 
     private void FixedUpdate()
     {
+        Vector2 velocity = rb.velocity;
+
         if (playerCombat != null && playerCombat.IsMovementLocked)
         {
-            return;
+            if (!playerCombat.IsSkipping)
+            {
+                velocity.x = 0f;
+            }
+        }
+        else
+        {
+            float speedMultiplier = playerCombat != null ? playerCombat.MovementSpeedMultiplier : 1f;
+            float targetSpeed = moveInput * moveSpeed * speedMultiplier;
+            float activeAcceleration = isGrounded ? acceleration : airAcceleration;
+            float activeDeceleration = isGrounded ? deceleration : airAcceleration;
+            float delta = Mathf.Abs(targetSpeed) > 0.01f ? activeAcceleration : activeDeceleration;
+            velocity.x = Mathf.MoveTowards(velocity.x, targetSpeed, delta * Time.fixedDeltaTime);
         }
 
-        float speedMultiplier = playerCombat != null ? playerCombat.MovementSpeedMultiplier : 1f;
-        float targetSpeed = moveInput * moveSpeed * speedMultiplier;
-        float delta = Mathf.Abs(targetSpeed) > 0.01f ? acceleration : deceleration;
-
-        float newX = Mathf.MoveTowards(rb.velocity.x, targetSpeed, delta * Time.fixedDeltaTime);
-        rb.velocity = new Vector2(newX, rb.velocity.y);
+        ApplyJumpGravity(ref velocity);
+        rb.velocity = velocity;
     }
 
     private void UpdateFacing()
@@ -145,7 +160,71 @@ public class PlayerController2D : MonoBehaviour
         moveSpeed = Mathf.Max(0.01f, playerConfig.MoveSpeed);
         acceleration = Mathf.Max(0f, playerConfig.GroundAcceleration);
         deceleration = Mathf.Max(0f, playerConfig.GroundDeceleration);
+        airAcceleration = Mathf.Max(0f, playerConfig.AirAcceleration);
         jumpForce = Mathf.Max(0f, playerConfig.JumpForce);
+        coyoteTime = Mathf.Max(0f, playerConfig.CoyoteTime);
+        jumpBufferTime = Mathf.Max(0f, playerConfig.JumpBufferTime);
+        fallMultiplier = Mathf.Max(1f, playerConfig.FallMultiplier);
+        lowJumpMultiplier = Mathf.Max(1f, playerConfig.LowJumpMultiplier);
+        maxFallSpeed = Mathf.Max(0f, playerConfig.MaxFallSpeed);
+    }
+
+    private void UpdateJumpTimers(bool jumpPressedThisFrame)
+    {
+        if (jumpPressedThisFrame)
+        {
+            jumpBufferTimer = jumpBufferTime;
+        }
+        else
+        {
+            jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - Time.deltaTime);
+        }
+
+        coyoteTimer = isGrounded
+            ? coyoteTime
+            : Mathf.Max(0f, coyoteTimer - Time.deltaTime);
+    }
+
+    private bool CanConsumeJump()
+    {
+        if (jumpBufferTimer <= 0f)
+        {
+            return false;
+        }
+
+        if (playerCombat != null && playerCombat.IsMovementLocked)
+        {
+            return false;
+        }
+
+        return isGrounded || coyoteTimer > 0f;
+    }
+
+    private void ApplyJumpGravity(ref Vector2 velocity)
+    {
+        if (isGrounded && velocity.y <= 0f)
+        {
+            velocity.y = Mathf.Max(velocity.y, -maxFallSpeed);
+            return;
+        }
+
+        float gravityMultiplier = 1f;
+        if (velocity.y < 0f)
+        {
+            gravityMultiplier = Mathf.Max(1f, fallMultiplier);
+        }
+        else if (velocity.y > 0f && !jumpHeld)
+        {
+            gravityMultiplier = Mathf.Max(1f, lowJumpMultiplier);
+        }
+
+        if (gravityMultiplier > 1f)
+        {
+            float extraGravity = Physics2D.gravity.y * rb.gravityScale * (gravityMultiplier - 1f) * Time.fixedDeltaTime;
+            velocity.y += extraGravity;
+        }
+
+        velocity.y = Mathf.Max(velocity.y, -maxFallSpeed);
     }
 
     private void ResolveGroundCheck()
@@ -172,6 +251,21 @@ public class PlayerController2D : MonoBehaviour
         bool isRunning = Mathf.Abs(rb.velocity.x) > 0.1f && isGrounded;
         animator.SetBool("isRunning", isRunning);
         animator.SetBool("isJumping", !isGrounded);
+    }
+
+    private void OnValidate()
+    {
+        moveSpeed = Mathf.Max(0.01f, moveSpeed);
+        acceleration = Mathf.Max(0f, acceleration);
+        deceleration = Mathf.Max(0f, deceleration);
+        airAcceleration = Mathf.Max(0f, airAcceleration);
+        jumpForce = Mathf.Max(0f, jumpForce);
+        coyoteTime = Mathf.Max(0f, coyoteTime);
+        jumpBufferTime = Mathf.Max(0f, jumpBufferTime);
+        fallMultiplier = Mathf.Max(1f, fallMultiplier);
+        lowJumpMultiplier = Mathf.Max(1f, lowJumpMultiplier);
+        maxFallSpeed = Mathf.Max(0f, maxFallSpeed);
+        groundCheckRadius = Mathf.Max(0.01f, groundCheckRadius);
     }
 
     private void OnDrawGizmosSelected()
